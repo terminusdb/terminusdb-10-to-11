@@ -6,8 +6,6 @@ mod convert_triples;
 use clap::*;
 use convert_dict::*;
 use convert_layer::*;
-use convert_triples::*;
-use std::collections::HashMap;
 use std::io;
 
 use tokio;
@@ -30,6 +28,7 @@ enum Commands {
         /// The tfc file to convert to
         to_data: String,
     },
+    /// convert a layer between a 10 store and an 11 store
     ConvertLayer {
         /// The storage dir from v10
         from: String,

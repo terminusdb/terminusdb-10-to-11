@@ -5,8 +5,8 @@ use std::io;
 use terminus_store_10::storage::{self as storage_10, directory as directory_10};
 use terminus_store_10::structure::pfc as pfc_10;
 use terminus_store_11::structure::tfc as tfc_11;
-use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncWriteExt, SeekFrom};
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 
 pub struct UntypedDictionaryOutput {
     pub offsets: Bytes,
@@ -47,7 +47,11 @@ pub async fn convert_untyped_dictionary_to_files(
 pub async fn convert_untyped_dictionary<F: storage_10::FileLoad + 'static>(
     from: F,
 ) -> io::Result<UntypedDictionaryOutput> {
-    let mut stream = pfc_10::dict_reader_to_indexed_stream(from.open_read().await?, 0);
+    eprintln!("time to convert untyped dict");
+    let open_file = from.open_read().await?;
+    eprintln!("file opened");
+    let mut stream = pfc_10::dict_reader_to_indexed_stream(open_file, 0);
+    eprintln!("opened stream");
 
     let mut builder = tfc_11::StringDictBufBuilder::new(BytesMut::new(), BytesMut::new());
     while let Some((_ix, val)) = stream.try_next().await? {
@@ -71,16 +75,20 @@ pub struct TypedDictionaryOutput {
 }
 
 pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
-    from: F,
+    node_dict: F,
+    val_dict: F,
 ) -> io::Result<TypedDictionaryOutput> {
-    let mut stream = pfc_10::dict_reader_to_indexed_stream(from.open_read().await?, 0);
+    let node_count = pfc_10::dict_file_get_count(node_dict).await?;
+    let val_count = pfc_10::dict_file_get_count(val_dict.clone()).await?;
+    let mut stream = pfc_10::dict_reader_to_indexed_stream(val_dict.open_read().await?, 0);
 
-    let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> = Vec::new(); // TODO with_capacity
+    let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> = Vec::with_capacity(val_count as usize);
     while let Some((ix, val)) = stream.try_next().await? {
         converted_vals.push((convert_value_string_to_dict_entry(&val), ix));
     }
 
     converted_vals.sort();
+    dbg!(converted_vals.len());
 
     let mut builder = tfc_11::TypedDictBufBuilder::new(
         BytesMut::new(),
@@ -93,7 +101,7 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     for (new_index, (entry, old_index)) in converted_vals.into_iter().enumerate() {
         builder.add(entry);
         let new_index = new_index as u64 + 1;
-        mapping.insert(old_index, new_index);
+        mapping.insert(old_index + node_count, new_index + node_count);
     }
 
     let (types_present_buf, type_offsets_buf, offsets_buf, data_buf) = builder.finalize();

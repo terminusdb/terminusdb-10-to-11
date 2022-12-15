@@ -911,6 +911,26 @@ name = "terminus-store"
 version = "0.19.9"
 dependencies = [
  "async-trait",
+ "byteorder",
+ "bytes",
+ "flate2",
+ "fs2",
+ "futures",
+ "futures-locks",
+ "lazy_static",
+ "rand",
+ "rayon",
+ "tar",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "terminus-store"
+version = "0.20.0"
+dependencies = [
+ "async-trait",
  "base64",
  "byteorder",
  "bytes",
@@ -934,28 +954,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "terminus-store"
-version = "0.19.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24063ba977a563798908a643ede86009474b1d5a81cdf15c05a9e63b9b7d0052"
-dependencies = [
- "async-trait",
- "byteorder",
- "bytes",
- "flate2",
- "fs2",
- "futures",
- "futures-locks",
- "lazy_static",
- "rand",
- "rayon",
- "tar",
- "thiserror",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "terminusdb-10-to-11"
 version = "0.1.0"
 dependencies = [
@@ -970,7 +968,7 @@ dependencies = [
  "itertools",
  "rug",
  "terminus-store 0.19.9",
- "terminus-store 0.19.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "terminus-store 0.20.0",
  "tokio",
  "tokio-util",
 ]
