@@ -2,14 +2,15 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::stream::TryStreamExt;
 use std::collections::HashMap;
 use std::io;
+use terminus_store_10::storage::{self as storage_10, directory as directory_10};
 use terminus_store_10::structure::pfc as pfc_10;
 use terminus_store_11::structure::tfc as tfc_11;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWriteExt, SeekFrom};
 
 pub struct UntypedDictionaryOutput {
-    offsets: Bytes,
-    data: Bytes,
+    pub offsets: Bytes,
+    pub data: Bytes,
 }
 
 pub async fn convert_untyped_dictionary_to_files(
@@ -20,7 +21,7 @@ pub async fn convert_untyped_dictionary_to_files(
     let UntypedDictionaryOutput {
         mut offsets,
         mut data,
-    } = convert_untyped_dictionary(from).await?;
+    } = convert_untyped_dictionary(directory_10::FileBackedStore::new(from)).await?;
 
     let mut options = OpenOptions::new();
     options.create_new(true);
@@ -43,9 +44,10 @@ pub async fn convert_untyped_dictionary_to_files(
     Ok(())
 }
 
-pub async fn convert_untyped_dictionary(from: &str) -> io::Result<UntypedDictionaryOutput> {
-    let from_file = File::open(from).await?;
-    let mut stream = pfc_10::dict_reader_to_indexed_stream(from_file, 0);
+pub async fn convert_untyped_dictionary<F: storage_10::FileLoad + 'static>(
+    from: F,
+) -> io::Result<UntypedDictionaryOutput> {
+    let mut stream = pfc_10::dict_reader_to_indexed_stream(from.open_read().await?, 0);
 
     let mut builder = tfc_11::StringDictBufBuilder::new(BytesMut::new(), BytesMut::new());
     while let Some((_ix, val)) = stream.try_next().await? {
@@ -61,16 +63,17 @@ pub async fn convert_untyped_dictionary(from: &str) -> io::Result<UntypedDiction
 }
 
 pub struct TypedDictionaryOutput {
-    types_present: Bytes,
-    type_offsets: Bytes,
-    offsets: Bytes,
-    data: Bytes,
-    mapping: HashMap<u64, u64>,
+    pub types_present: Bytes,
+    pub type_offsets: Bytes,
+    pub offsets: Bytes,
+    pub data: Bytes,
+    pub mapping: HashMap<u64, u64>,
 }
 
-pub async fn convert_typed_dictionary(from: &str) -> io::Result<TypedDictionaryOutput> {
-    let from_file = File::open(from).await?;
-    let mut stream = pfc_10::dict_reader_to_indexed_stream(from_file, 0);
+pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
+    from: F,
+) -> io::Result<TypedDictionaryOutput> {
+    let mut stream = pfc_10::dict_reader_to_indexed_stream(from.open_read().await?, 0);
 
     let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> = Vec::new(); // TODO with_capacity
     while let Some((ix, val)) = stream.try_next().await? {
@@ -105,5 +108,5 @@ pub async fn convert_typed_dictionary(from: &str) -> io::Result<TypedDictionaryO
 }
 
 fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry {
-    todo!();
+    <String as tfc_11::TdbDataType>::make_entry(&value)
 }
