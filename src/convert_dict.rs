@@ -88,7 +88,7 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     }
 
     converted_vals.sort();
-    dbg!(converted_vals.len());
+    converted_vals.len();
 
     let mut builder = tfc_11::TypedDictBufBuilder::new(
         BytesMut::new(),

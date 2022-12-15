@@ -17,7 +17,6 @@ use bytes::Bytes;
 use std::io;
 pub async fn convert_layer(from: &str, to: &str, id: &str) -> io::Result<()> {
     let id = string_to_name(id).unwrap();
-    dbg!(from);
     let v10_store = directory_10::DirectoryLayerStore::new(from);
     let is_child = storage_10::PersistentLayerStore::layer_has_parent(&v10_store, id).await?;
     let v11_store = archive_11::ArchiveLayerStore::new(to);
@@ -27,7 +26,6 @@ pub async fn convert_layer(from: &str, to: &str, id: &str) -> io::Result<()> {
     storage_11::PersistentLayerStore::create_named_directory(&v11_store, id).await?;
 
     let mapping = convert_dictionaries(&v10_store, &v11_store, id).await?;
-    dbg!(mapping.len());
     eprintln!("dictionaries converted");
     convert_triples(&v10_store, &v11_store, id, is_child, &mapping).await?;
     eprintln!("triples converted");
@@ -48,12 +46,12 @@ async fn convert_dictionaries(
     v11_store: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
 ) -> io::Result<HashMap<u64, u64>> {
-    let node_dict_pfc = dbg!(storage_10::PersistentLayerStore::get_file(
+    let node_dict_pfc = storage_10::PersistentLayerStore::get_file(
         v10_store,
         id,
         V10_FILENAMES.node_dictionary_blocks,
     )
-    .await)?;
+    .await?;
     let UntypedDictionaryOutput { offsets, data } =
         convert_untyped_dictionary(node_dict_pfc.clone()).await?;
 
