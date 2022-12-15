@@ -34,6 +34,9 @@ enum Commands {
         from: String,
         /// The storage dir for v11
         to: String,
+        /// The workdir to store mappings in
+        #[arg(short = 'w', long = "workdir")]
+        workdir: Option<String>,
         /// The layer id to convert
         id: String,
     },
@@ -49,6 +52,22 @@ async fn main() -> io::Result<()> {
             to_offsets,
             to_data,
         } => convert_untyped_dictionary_to_files(&from, &to_offsets, &to_data).await,
-        Commands::ConvertLayer { from, to, id } => convert_layer(&from, &to, &id).await,
+        Commands::ConvertLayer {
+            from,
+            to,
+            workdir,
+            id,
+        } => {
+            convert_layer(
+                &from,
+                &to,
+                workdir
+                    .as_ref()
+                    .map(|w| w.as_str())
+                    .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
+                &id,
+            )
+            .await
+        }
     }
 }

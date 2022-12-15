@@ -72,23 +72,26 @@ pub struct TypedDictionaryOutput {
     pub offsets: Bytes,
     pub data: Bytes,
     pub mapping: HashMap<u64, u64>,
+    pub offset: u64,
 }
 
 pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     node_dict: F,
     val_dict: F,
+    offset: u64,
 ) -> io::Result<TypedDictionaryOutput> {
     let node_count = pfc_10::dict_file_get_count(node_dict).await?;
     let val_count = pfc_10::dict_file_get_count(val_dict.clone()).await?;
-    let mut stream = pfc_10::dict_reader_to_indexed_stream(val_dict.open_read().await?, 0);
+    let mut stream =
+        pfc_10::dict_reader_to_indexed_stream(val_dict.open_read().await?, node_count + offset);
 
-    let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> = Vec::with_capacity(val_count as usize);
+    let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> =
+        Vec::with_capacity(val_count as usize);
     while let Some((ix, val)) = stream.try_next().await? {
         converted_vals.push((convert_value_string_to_dict_entry(&val), ix));
     }
 
     converted_vals.sort();
-    converted_vals.len();
 
     let mut builder = tfc_11::TypedDictBufBuilder::new(
         BytesMut::new(),
@@ -100,8 +103,8 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
 
     for (new_index, (entry, old_index)) in converted_vals.into_iter().enumerate() {
         builder.add(entry);
-        let new_index = new_index as u64 + 1;
-        mapping.insert(old_index + node_count, new_index + node_count);
+        let new_index = new_index as u64 + offset + node_count + 1;
+        mapping.insert(old_index, new_index);
     }
 
     let (types_present_buf, type_offsets_buf, offsets_buf, data_buf) = builder.finalize();
@@ -112,6 +115,7 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
         offsets: offsets_buf.freeze(),
         data: data_buf.freeze(),
         mapping,
+        offset: offset + node_count + val_count,
     })
 }
 

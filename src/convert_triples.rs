@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use terminus_store_10::storage as storage_10;
 use terminus_store_10::structure as structure_10;
-use terminus_store_11::structure::{
-    LogArrayBufBuilder,
-};
+use terminus_store_11::structure::LogArrayBufBuilder;
 
 use bytes::{Bytes, BytesMut};
 use futures::stream::TryStreamExt;

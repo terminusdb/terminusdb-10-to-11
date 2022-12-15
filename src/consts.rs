@@ -289,7 +289,6 @@ pub const UNCHANGED_FILES: [&'static str; 39] = [
     V10_FILENAMES.predicate_idmap_bit_index_blocks,
     V10_FILENAMES.predicate_idmap_bit_index_sblocks,
     V10_FILENAMES.rollup,
-
     V10_FILENAMES.base_s_p_adjacency_list_nums,
     V10_FILENAMES.base_s_p_adjacency_list_bits,
     V10_FILENAMES.base_s_p_adjacency_list_bit_index_blocks,
@@ -300,10 +299,8 @@ pub const UNCHANGED_FILES: [&'static str; 39] = [
     V10_FILENAMES.base_predicate_wavelet_tree_bits,
     V10_FILENAMES.base_predicate_wavelet_tree_bit_index_blocks,
     V10_FILENAMES.base_predicate_wavelet_tree_bit_index_sblocks,
-
     V10_FILENAMES.base_subjects,
     V10_FILENAMES.base_objects,
-
     V10_FILENAMES.parent,
     V10_FILENAMES.pos_s_p_adjacency_list_nums,
     V10_FILENAMES.pos_s_p_adjacency_list_bits,
@@ -325,7 +322,6 @@ pub const UNCHANGED_FILES: [&'static str; 39] = [
     V10_FILENAMES.neg_predicate_wavelet_tree_bits,
     V10_FILENAMES.neg_predicate_wavelet_tree_bit_index_blocks,
     V10_FILENAMES.neg_predicate_wavelet_tree_bit_index_sblocks,
-
     V10_FILENAMES.pos_subjects,
     V10_FILENAMES.neg_subjects,
 ];
