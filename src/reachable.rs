@@ -63,19 +63,29 @@ pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
 
     let mut final_list = Vec::with_capacity(layers.len());
     while let Some(layer) = layers.pop() {
-        final_list.push(layer);
         if let Some(parent) =
             storage_10::LayerStore::get_layer_parent_name(&layer_store, layer).await?
         {
+            final_list.push((Some(parent), layer));
             if discovered.insert(parent) {
                 layers.push(parent);
+            }
+        } else {
+            final_list.push((None, layer));
+        }
+
+        // we musn't forget about the rollup
+        if storage_10::PersistentLayerStore::layer_has_rollup(&layer_store, layer).await? {
+            let rollup = storage_10::PersistentLayerStore::read_rollup_file(&layer_store, layer).await?;
+            if discovered.insert(rollup) {
+                layers.push(rollup);
             }
         }
     }
 
     final_list.sort();
 
-    for layer in final_list {
+    for (_parent, layer) in final_list {
         println!("{}", storage_10::name_to_string(layer));
     }
 
