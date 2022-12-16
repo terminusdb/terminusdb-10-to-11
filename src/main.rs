@@ -2,6 +2,7 @@ mod consts;
 mod convert_dict;
 mod convert_layer;
 mod convert_triples;
+mod dataconversion;
 
 use clap::*;
 use convert_dict::*;
