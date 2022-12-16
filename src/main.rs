@@ -3,10 +3,13 @@ mod convert_dict;
 mod convert_layer;
 mod convert_triples;
 mod dataconversion;
+mod reachable;
 
-use clap::*;
 use convert_dict::*;
 use convert_layer::*;
+use reachable::*;
+
+use clap::*;
 use std::io;
 
 use tokio;
@@ -41,6 +44,8 @@ enum Commands {
         /// The layer id to convert
         id: String,
     },
+    /// find reachable layers
+    Reachable { store: String },
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -70,5 +75,6 @@ async fn main() -> io::Result<()> {
             )
             .await
         }
+        Commands::Reachable { store } => find_reachable_layers(&store).await,
     }
 }
