@@ -19,11 +19,15 @@ use bytes::Bytes;
 
 use serde::{Deserialize, Serialize};
 
-pub async fn convert_layer(from: &str, to: &str, work: &str, id: &str) -> io::Result<()> {
-    let id = string_to_name(id).unwrap();
+pub async fn convert_layer(from: &str, to: &str, work: &str, id_string: &str) -> io::Result<()> {
+    let id = string_to_name(id_string).unwrap();
     let v10_store = directory_10::DirectoryLayerStore::new(from);
     let is_child = storage_10::PersistentLayerStore::layer_has_parent(&v10_store, id).await?;
     let v11_store = archive_11::ArchiveLayerStore::new(to);
+
+    if storage_11::PersistentLayerStore::directory_exists(&v11_store, id).await? {
+        panic!("layer appears to already have been converted: {id_string}");
+    }
 
     eprintln!("initial setup done");
     let (mut mapping, offset) = get_mapping_and_offset(work, &v10_store, id).await?;
