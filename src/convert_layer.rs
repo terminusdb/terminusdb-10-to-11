@@ -20,40 +20,52 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 pub async fn convert_layer(from: &str, to: &str, work: &str, id_string: &str) -> io::Result<()> {
-    let id = string_to_name(id_string).unwrap();
     let v10_store = directory_10::DirectoryLayerStore::new(from);
-    let is_child = storage_10::PersistentLayerStore::layer_has_parent(&v10_store, id).await?;
     let v11_store = archive_11::ArchiveLayerStore::new(to);
+    let id = string_to_name(id_string).unwrap();
 
-    if storage_11::PersistentLayerStore::directory_exists(&v11_store, id).await? {
-        panic!("layer appears to already have been converted: {id_string}");
+    convert_layer_with_stores(&v10_store, &v11_store, work, id).await
+}
+
+pub async fn convert_layer_with_stores(
+    v10_store: &directory_10::DirectoryLayerStore,
+    v11_store: &archive_11::ArchiveLayerStore,
+    work: &str,
+    id: [u32; 5],
+) -> io::Result<()> {
+    let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id).await?;
+
+    if storage_11::PersistentLayerStore::directory_exists(v11_store, id).await? {
+        panic!(
+            "layer appears to already have been converted: {}",
+            name_to_string(id)
+        );
     }
 
     eprintln!("initial setup done");
-    let (mut mapping, offset) = get_mapping_and_offset(work, &v10_store, id).await?;
+    let (mut mapping, offset) = get_mapping_and_offset(work, v10_store, id).await?;
 
     eprintln!("parent mappings retrieved");
 
-    storage_11::PersistentLayerStore::create_named_directory(&v11_store, id).await?;
+    storage_11::PersistentLayerStore::create_named_directory(v11_store, id).await?;
 
-    let (mapping_addition, offset) =
-        convert_dictionaries(&v10_store, &v11_store, id, offset).await?;
+    let (mapping_addition, offset) = convert_dictionaries(v10_store, v11_store, id, offset).await?;
     mapping.extend(mapping_addition);
     eprintln!("dictionaries converted");
-    convert_triples(&v10_store, &v11_store, id, is_child, &mapping).await?;
+    convert_triples(v10_store, v11_store, id, is_child, &mapping).await?;
     eprintln!("triples converted");
-    copy_unchanged_files(&v10_store, &v11_store, id).await?;
+    copy_unchanged_files(v10_store, v11_store, id).await?;
     eprintln!("files copied");
 
-    rebuild_indexes(&v11_store, id, is_child).await?;
+    rebuild_indexes(v11_store, id, is_child).await?;
     eprintln!("indexes rebuilt");
 
-    storage_11::PersistentLayerStore::finalize(&v11_store, id).await?;
+    storage_11::PersistentLayerStore::finalize(v11_store, id).await?;
     eprintln!("finalized!");
 
     // we copy the rollup only after finalizing, as rollups are not
     // part of a layer under construction
-    copy_file(&v10_store, &v11_store, id, V10_FILENAMES.rollup).await?;
+    copy_file(v10_store, v11_store, id, V10_FILENAMES.rollup).await?;
     eprintln!("copied rollup file (if exists)");
 
     write_parent_map(&work, id, mapping, offset)?;

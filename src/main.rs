@@ -1,12 +1,14 @@
 mod consts;
 mod convert_dict;
 mod convert_layer;
+mod convert_store;
 mod convert_triples;
 mod dataconversion;
 mod reachable;
 
 use convert_dict::*;
 use convert_layer::*;
+use convert_store::*;
 use reachable::*;
 
 use clap::*;
@@ -44,8 +46,16 @@ enum Commands {
         /// The layer id to convert
         id: String,
     },
-    /// find reachable layers
-    Reachable { store: String },
+    /// convert a layer between a 10 store and an 11 store
+    ConvertStore {
+        /// The storage dir from v10
+        from: String,
+        /// The storage dir for v11
+        to: String,
+        /// The workdir to store mappings in
+        #[arg(short = 'w', long = "workdir")]
+        workdir: Option<String>,
+    },
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -75,6 +85,16 @@ async fn main() -> io::Result<()> {
             )
             .await
         }
-        Commands::Reachable { store } => find_reachable_layers(&store).await,
+        Commands::ConvertStore { from, to, workdir } => {
+            convert_store(
+                &from,
+                &to,
+                workdir
+                    .as_ref()
+                    .map(|w| w.as_str())
+                    .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
+            )
+            .await
+        }
     }
 }

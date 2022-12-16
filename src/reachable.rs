@@ -2,10 +2,15 @@ use terminus_store_10::layer as layer_10;
 use terminus_store_10::storage as storage_10;
 use terminus_store_10::storage::directory as directory_10;
 
-use std::collections::HashSet;
+use itertools::*;
+
+use std::collections::{HashMap, HashSet};
 use std::io;
 
-pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
+pub async fn find_reachable_layers(
+    layer_store: &directory_10::DirectoryLayerStore,
+    label_store: &directory_10::DirectoryLabelStore,
+) -> io::Result<HashMap<Option<[u32; 5]>, Vec<[u32; 5]>>> {
     let special_labels: HashSet<&'static str> = HashSet::from([
         "http%3a%2f%2fterminusdb.com%2fschema%2fref",
         "http%3a%2f%2fterminusdb.com%2fschema%2frepository",
@@ -14,12 +19,8 @@ pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
         "terminusdb%3a%2f%2f%2fsystem%2fschema",
     ]);
 
-    dbg!(store);
-    let layer_store = directory_10::DirectoryLayerStore::new(store);
-    let label_store = directory_10::DirectoryLabelStore::new(store);
-
     eprintln!("about to retrieve labels");
-    let labels = storage_10::LabelStore::labels(&label_store).await?;
+    let labels = storage_10::LabelStore::labels(label_store).await?;
     let special_layers: Vec<[u32; 5]> = labels
         .iter()
         .filter(|l| special_labels.contains(l.name.as_str()))
@@ -45,13 +46,13 @@ pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
     let mut commit_layers = HashSet::new();
     for data_product in data_product_layers.iter().cloned() {
         let commit_layers_for_data_product =
-            discover_layers_in_meta_graph(&layer_store, data_product).await?;
+            discover_layers_in_meta_graph(layer_store, data_product).await?;
         commit_layers.extend(commit_layers_for_data_product.clone());
         layers.extend(commit_layers_for_data_product);
     }
 
     for commit in commit_layers {
-        layers.extend(discover_layers_in_meta_graph(&layer_store, commit).await?);
+        layers.extend(discover_layers_in_meta_graph(layer_store, commit).await?);
     }
 
     layers.sort();
@@ -64,7 +65,7 @@ pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
     let mut final_list = Vec::with_capacity(layers.len());
     while let Some(layer) = layers.pop() {
         if let Some(parent) =
-            storage_10::LayerStore::get_layer_parent_name(&layer_store, layer).await?
+            storage_10::LayerStore::get_layer_parent_name(layer_store, layer).await?
         {
             final_list.push((Some(parent), layer));
             if discovered.insert(parent) {
@@ -75,8 +76,9 @@ pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
         }
 
         // we musn't forget about the rollup
-        if storage_10::PersistentLayerStore::layer_has_rollup(&layer_store, layer).await? {
-            let rollup = storage_10::PersistentLayerStore::read_rollup_file(&layer_store, layer).await?;
+        if storage_10::PersistentLayerStore::layer_has_rollup(layer_store, layer).await? {
+            let rollup =
+                storage_10::PersistentLayerStore::read_rollup_file(layer_store, layer).await?;
             if discovered.insert(rollup) {
                 layers.push(rollup);
             }
@@ -85,11 +87,15 @@ pub async fn find_reachable_layers(store: &str) -> io::Result<()> {
 
     final_list.sort();
 
-    for (_parent, layer) in final_list {
-        println!("{}", storage_10::name_to_string(layer));
-    }
+    let group_iter = final_list
+        .into_iter()
+        .group_by(|(parent, _)| parent.clone());
+    let final_map: HashMap<Option<[u32; 5]>, Vec<[u32; 5]>> = group_iter
+        .into_iter()
+        .map(|(k, g)| (k, g.map(|(_, v)| v).collect()))
+        .collect();
 
-    Ok(())
+    Ok(final_map)
 }
 
 async fn discover_layers_in_meta_graph(
