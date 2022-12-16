@@ -284,11 +284,10 @@ pub const V11_FILENAMES: Filenames = Filenames {
     rollup: "rollup.hex",
 };
 
-pub const UNCHANGED_FILES: [&'static str; 39] = [
+pub const UNCHANGED_FILES: [&'static str; 38] = [
     V10_FILENAMES.predicate_idmap_bits,
     V10_FILENAMES.predicate_idmap_bit_index_blocks,
     V10_FILENAMES.predicate_idmap_bit_index_sblocks,
-    V10_FILENAMES.rollup,
     V10_FILENAMES.base_s_p_adjacency_list_nums,
     V10_FILENAMES.base_s_p_adjacency_list_bits,
     V10_FILENAMES.base_s_p_adjacency_list_bit_index_blocks,

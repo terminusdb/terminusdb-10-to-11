@@ -51,6 +51,11 @@ pub async fn convert_layer(from: &str, to: &str, work: &str, id_string: &str) ->
     storage_11::PersistentLayerStore::finalize(&v11_store, id).await?;
     eprintln!("finalized!");
 
+    // we copy the rollup only after finalizing, as rollups are not
+    // part of a layer under construction
+    copy_file(&v10_store, &v11_store, id, V10_FILENAMES.rollup).await?;
+    eprintln!("copied rollup file (if exists)");
+
     write_parent_map(&work, id, mapping, offset)?;
     eprintln!("written parent map to workdir");
 
