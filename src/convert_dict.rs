@@ -8,6 +8,8 @@ use terminus_store_11::structure::tfc as tfc_11;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
+use crate::dataconversion::convert_value_string_to_dict_entry;
+
 pub struct UntypedDictionaryOutput {
     pub offsets: Bytes,
     pub data: Bytes,
@@ -117,8 +119,4 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
         mapping,
         offset: offset + node_count + val_count,
     })
-}
-
-fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry {
-    <String as tfc_11::TdbDataType>::make_entry(&value)
 }
