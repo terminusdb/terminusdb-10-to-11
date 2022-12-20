@@ -21,7 +21,7 @@ pub fn value_string_to_slices(s: &str) -> LangOrType {
         let pos = s[..s.len() - 1].rfind('\'').unwrap();
         if s.as_bytes()[pos - 1] == b'^' {
             assert!(s.as_bytes()[pos - 2] == b'^');
-            LangOrType::Type(&s[0..pos - 2], &s[pos + 2..s.len() - 1])
+            LangOrType::Type(&s[0..pos - 2], &s[pos + 1..s.len() - 1])
         } else {
             assert!(s.as_bytes()[pos - 1] == b'@');
             LangOrType::Lang(&s[..pos - 1], &s[pos..])
@@ -179,7 +179,7 @@ pub fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry
                 let s = s[1..s.len() - 1].to_string();
                 <Entity as tfc_11::TdbDataType>::make_entry(&s)
             } else {
-                panic!("We should have exaustive analysis of available types")
+                panic!("We should have had exhaustive analysis of available types: {s}^^{t}")
             }
         }
     }

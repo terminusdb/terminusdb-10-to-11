@@ -1,8 +1,5 @@
-use terminus_store_10::storage as storage_10;
 use terminus_store_10::storage::directory as directory_10;
-use terminus_store_11::storage as storage_11;
 use terminus_store_11::storage::archive as archive_11;
-use terminus_store_11::storage::directory as directory_11;
 
 use crate::convert_layer::*;
 use crate::reachable::*;

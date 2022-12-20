@@ -9,7 +9,6 @@ mod reachable;
 use convert_dict::*;
 use convert_layer::*;
 use convert_store::*;
-use reachable::*;
 
 use clap::*;
 use std::io;
@@ -46,7 +45,7 @@ enum Commands {
         /// The layer id to convert
         id: String,
     },
-    /// convert a layer between a 10 store and an 11 store
+    /// convert a store from a 10 store and an 11 store
     ConvertStore {
         /// The storage dir from v10
         from: String,
