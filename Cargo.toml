@@ -8,8 +8,8 @@ description = "Converts a terminusdb v10 store to a v11 store"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#terminus-store_10 = {package = "terminus-store", version = "0.19.9"}
-terminus-store_10 = {package = "terminus-store", path="../terminusdb-store-10"}
+#terminus-store_10 = {package = "terminus-store", path="../terminusdb-store-10"}
+terminus-store_10 = {package = "terminus-store", version = "0.19.10"}
 terminus-store_11 = {package = "terminus-store", path="../terminusdb-store"}
 clap = {version="4.0", features=["derive"]}
 fs2 = "0.4.3"
