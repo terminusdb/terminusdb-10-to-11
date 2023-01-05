@@ -50,9 +50,7 @@ pub async fn convert_untyped_dictionary<F: storage_10::FileLoad + 'static>(
     from: F,
 ) -> io::Result<UntypedDictionaryOutput> {
     eprintln!("time to convert untyped dict");
-    let open_file = from.open_read().await?;
-    eprintln!("file opened");
-    let mut stream = pfc_10::dict_reader_to_indexed_stream(open_file, 0);
+    let mut stream = pfc_10::dict_file_to_indexed_stream(from, 0).await?;
     eprintln!("opened stream");
 
     let mut builder = tfc_11::StringDictBufBuilder::new(BytesMut::new(), BytesMut::new());
@@ -85,7 +83,7 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     let node_count = pfc_10::dict_file_get_count(node_dict).await?;
     let val_count = pfc_10::dict_file_get_count(val_dict.clone()).await?;
     let mut stream =
-        pfc_10::dict_reader_to_indexed_stream(val_dict.open_read().await?, node_count + offset);
+        pfc_10::dict_file_to_indexed_stream(val_dict, node_count + offset).await?;
 
     let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> =
         Vec::with_capacity(val_count as usize);
