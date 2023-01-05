@@ -8,7 +8,7 @@ use terminus_store_11::structure::{
     tfc as tfc_11, AnyURI, Base64Binary, Date, DateTimeStamp, DayTimeDuration, Decimal, Duration,
     Entity, GDay, GMonth, GMonthDay, GYear, GYearMonth, HexBinary, IDRef, LangString, Language,
     NCName, NMToken, Name, NegativeInteger, NonNegativeInteger, NonPositiveInteger,
-    NormalizedString, PositiveInteger, QName, Token, YearMonthDuration, ID,
+    NormalizedString, PositiveInteger, QName, Token, YearMonthDuration, ID, AnySimpleType,
 };
 
 pub enum LangOrType<'a> {
@@ -179,6 +179,9 @@ pub fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry
             } else if t == "http://www.w3.org/2001/XMLSchema#ENTITY" {
                 let s = s[1..s.len() - 1].to_string();
                 <Entity as tfc_11::TdbDataType>::make_entry(&s)
+            } else if t == "http://www.w3.org/2001/XMLSchema#anySimpleType" {
+                let s = s[1..s.len() - 1].to_string();
+                <AnySimpleType as tfc_11::TdbDataType>::make_entry(&s)
             } else {
                 panic!("We should have had exhaustive analysis of available types: {s}^^{t}")
             }
@@ -191,7 +194,7 @@ fn parse_gyear(s: &str) -> GYear {
         static ref RE: Regex = Regex::new(r"(-?\d{4})(.*)").unwrap();
     }
     let cap = RE.captures(s).unwrap();
-    let year = cap[0].parse::<i64>().unwrap();
+    let year = cap[1].parse::<i64>().unwrap();
     let offset = parse_offset(&cap[1]);
     GYear { year, offset }
 }
@@ -201,7 +204,7 @@ fn parse_gmonth(s: &str) -> GMonth {
         static ref RE: Regex = Regex::new(r"--(\d{2})(.*)").unwrap();
     }
     let cap = RE.captures(s).unwrap();
-    let month = cap[0].parse::<u8>().unwrap();
+    let month = cap[1].parse::<u8>().unwrap();
     let offset = parse_offset(&cap[1]);
     GMonth { month, offset }
 }
@@ -211,8 +214,8 @@ fn parse_gday(s: &str) -> GDay {
         static ref RE: Regex = Regex::new(r"---(\d{2})(.*)").unwrap();
     }
     let cap = RE.captures(s).unwrap();
-    let day = cap[0].parse::<u8>().unwrap();
-    let offset = parse_offset(&cap[1]);
+    let day = cap[1].parse::<u8>().unwrap();
+    let offset = parse_offset(&cap[2]);
     GDay { day, offset }
 }
 
@@ -221,9 +224,9 @@ fn parse_gyearmonth(s: &str) -> GYearMonth {
         static ref RE: Regex = Regex::new(r"(-?\d{4})-(\d{2})(.*)").unwrap();
     }
     let cap = RE.captures(s).unwrap();
-    let year = cap[0].parse::<i64>().unwrap();
-    let month = cap[1].parse::<u8>().unwrap();
-    let offset = parse_offset(&cap[2]);
+    let year = cap[1].parse::<i64>().unwrap();
+    let month = cap[2].parse::<u8>().unwrap();
+    let offset = parse_offset(&cap[3]);
     GYearMonth {
         year,
         month,
@@ -236,9 +239,9 @@ fn parse_gmonthday(s: &str) -> GMonthDay {
         static ref RE: Regex = Regex::new(r"--(\d{2})-(\d{2})(.*)").unwrap();
     }
     let cap = RE.captures(s).unwrap();
-    let month = cap[0].parse::<u8>().unwrap();
-    let day = cap[1].parse::<u8>().unwrap();
-    let offset = parse_offset(&cap[2]);
+    let month = cap[1].parse::<u8>().unwrap();
+    let day = cap[2].parse::<u8>().unwrap();
+    let offset = parse_offset(&cap[3]);
     GMonthDay { month, day, offset }
 }
 
@@ -247,12 +250,12 @@ fn parse_offset(s: &str) -> i16 {
         0
     } else {
         lazy_static! {
-            static ref RE: Regex = Regex::new(r"(\+|-)(\d{2}:\d{2})").unwrap();
+            static ref RE: Regex = Regex::new(r"(\+|-)(\d{2}):(\d{2})").unwrap();
         }
         if let Some(cap) = RE.captures(s) {
-            let sign = if cap[0] == *"+" { 1 } else { -1 };
-            let h = cap[1].parse::<i16>().unwrap();
-            let m = cap[2].parse::<i16>().unwrap();
+            let sign = if cap[1] == *"+" { 1 } else { -1 };
+            let h = cap[2].parse::<i16>().unwrap();
+            let m = cap[3].parse::<i16>().unwrap();
             sign * h * 60 + m
         } else {
             0
@@ -262,8 +265,7 @@ fn parse_offset(s: &str) -> i16 {
 
 fn parse_date_from_string(s: &str) -> Date {
     lazy_static! {
-        static ref RE: Regex =
-            Regex::new(r"(\d{4})-(\d{2})-(\d{2})((\+|-)\d{2}:\d{2}){0,1}").unwrap();
+        static ref RE: Regex = Regex::new(r"(\d{4})-(\d{2})-(\d{2})(.*)").unwrap();
     }
     let cap = RE.captures(s).unwrap();
     let year = cap[1].parse::<i64>().unwrap();
@@ -285,39 +287,39 @@ fn parse_duration(s: &str) -> Duration {
         ).unwrap();
     }
     let cap = RE.captures(s).unwrap();
-    let sign = if cap[0].is_empty() { 1 } else { -1 };
-    let year = if cap[1].is_empty() {
+    let sign = if cap[1].is_empty() { 1 } else { -1 };
+    let year = if cap[2].is_empty() {
         0_i64
     } else {
-        cap[1].parse::<i64>().unwrap()
+        cap[2][0..cap[2].len()-1].parse::<i64>().unwrap()
     };
-    let month = if cap[2].is_empty() {
+    let month = if cap[4].is_empty() {
         0_u8
     } else {
-        cap[2].parse::<u8>().unwrap()
+        cap[4][0..cap[4].len()-1].parse::<u8>().unwrap()
     };
-    let day = if cap[3].is_empty() {
+    let day = if cap[6].is_empty() {
         0_u8
     } else {
-        cap[3].parse::<u8>().unwrap()
+        cap[6][0..cap[6].len()-1].parse::<u8>().unwrap()
     };
-    let (hour, minute, second) = if cap[4].is_empty() {
+    let (hour, minute, second) = if cap[8].is_empty() {
         (0, 0, 0)
     } else {
-        let hour = if cap[5].is_empty() {
+        let hour = if cap[9].is_empty() {
             0
         } else {
-            cap[5].parse::<u8>().unwrap()
+            cap[9][0..cap[9].len()-1].parse::<u8>().unwrap()
         };
-        let minute = if cap[6].is_empty() {
+        let minute = if cap[11].is_empty() {
             0
         } else {
-            cap[6].parse::<u8>().unwrap()
+            cap[11][0..cap[11].len()-1].parse::<u8>().unwrap()
         };
-        let second = if cap[7].is_empty() {
+        let second = if cap[13].is_empty() {
             0
         } else {
-            cap[7].parse::<u8>().unwrap()
+            cap[13][0..cap[13].len()-1].parse::<u8>().unwrap()
         };
         (hour, minute, second)
     };
