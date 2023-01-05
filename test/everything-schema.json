@@ -20,8 +20,6 @@
     "gDay":"xsd:gDay",
     "gYearMonth":"xsd:gYearMonth",
     "duration":"xsd:duration",
-    "yearMonthDuration":"xsd:yearMonthDuration",
-    "dayTimeDuration":"xsd:dayTimeDuration",
     "byte":"xsd:byte",
     "short":"xsd:short",
     "int":"xsd:int",
