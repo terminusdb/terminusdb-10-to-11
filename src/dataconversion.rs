@@ -1,4 +1,5 @@
 use chrono::{NaiveDateTime, NaiveTime};
+use lazy_static::lazy_static;
 use regex::Regex;
 use rug::Integer;
 use std::io::{Cursor, Read};
@@ -186,32 +187,40 @@ pub fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry
 }
 
 fn parse_gyear(s: &str) -> GYear {
-    let re = Regex::new(r"(-?\d{4})(.*)").unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"(-?\d{4})(.*)").unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let year = cap[0].parse::<i64>().unwrap();
     let offset = parse_offset(&cap[1]);
     GYear { year, offset }
 }
 
 fn parse_gmonth(s: &str) -> GMonth {
-    let re = Regex::new(r"--(\d{2})(.*)").unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"--(\d{2})(.*)").unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let month = cap[0].parse::<u8>().unwrap();
     let offset = parse_offset(&cap[1]);
     GMonth { month, offset }
 }
 
 fn parse_gday(s: &str) -> GDay {
-    let re = Regex::new(r"---(\d{2})(.*)").unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"---(\d{2})(.*)").unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let day = cap[0].parse::<u8>().unwrap();
     let offset = parse_offset(&cap[1]);
     GDay { day, offset }
 }
 
 fn parse_gyearmonth(s: &str) -> GYearMonth {
-    let re = Regex::new(r"(-?\d{4})-(\d{2})(.*)").unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"(-?\d{4})-(\d{2})(.*)").unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let year = cap[0].parse::<i64>().unwrap();
     let month = cap[1].parse::<u8>().unwrap();
     let offset = parse_offset(&cap[2]);
@@ -223,8 +232,10 @@ fn parse_gyearmonth(s: &str) -> GYearMonth {
 }
 
 fn parse_gmonthday(s: &str) -> GMonthDay {
-    let re = Regex::new(r"--(\d{2})-(\d{2})(.*)").unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"--(\d{2})-(\d{2})(.*)").unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let month = cap[0].parse::<u8>().unwrap();
     let day = cap[1].parse::<u8>().unwrap();
     let offset = parse_offset(&cap[2]);
@@ -235,18 +246,26 @@ fn parse_offset(s: &str) -> i16 {
     if s.is_empty() {
         0
     } else {
-        let re = Regex::new(r"(\+|-)(\d{2}:\d{2})").unwrap();
-        let cap = re.captures(s).unwrap();
-        let sign = if cap[0] == *"+" { 1 } else { -1 };
-        let h = cap[1].parse::<i16>().unwrap();
-        let m = cap[2].parse::<i16>().unwrap();
-        sign * h * 60 + m
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"(\+|-)(\d{2}:\d{2})").unwrap();
+        }
+        if let Some(cap) = RE.captures(s) {
+            let sign = if cap[0] == *"+" { 1 } else { -1 };
+            let h = cap[1].parse::<i16>().unwrap();
+            let m = cap[2].parse::<i16>().unwrap();
+            sign * h * 60 + m
+        } else {
+            0
+        }
     }
 }
 
 fn parse_date_from_string(s: &str) -> Date {
-    let re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})((\+|-)\d{2}:\d{2}){0,1}").unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE: Regex =
+            Regex::new(r"(\d{4})-(\d{2})-(\d{2})((\+|-)\d{2}:\d{2}){0,1}").unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let year = cap[1].parse::<i64>().unwrap();
     let month = cap[2].parse::<u8>().unwrap();
     let day = cap[3].parse::<u8>().unwrap();
@@ -260,11 +279,12 @@ fn parse_date_from_string(s: &str) -> Date {
 }
 
 fn parse_duration(s: &str) -> Duration {
-    let re = Regex::new(
-        r"(-?)P((\d{0,4}Y)?)((\d{0,2}M)?)((\d{0,2}D)?)(T?)((\d{0,2}H)?)((\d{0,2}M)?)((\d{0,2}S)?)",
-    )
-    .unwrap();
-    let cap = re.captures(s).unwrap();
+    lazy_static! {
+        static ref RE:  Regex = Regex::new(
+            r"(-?)P((\d{0,4}Y)?)((\d{0,2}M)?)((\d{0,2}D)?)(T?)((\d{0,2}H)?)((\d{0,2}M)?)((\d{0,2}S)?)",
+        ).unwrap();
+    }
+    let cap = RE.captures(s).unwrap();
     let sign = if cap[0].is_empty() { 1 } else { -1 };
     let year = if cap[1].is_empty() {
         0_i64
