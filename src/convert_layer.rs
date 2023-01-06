@@ -40,6 +40,7 @@ pub async fn convert_layer_with_stores(
     naive: bool,
     id: [u32; 5],
 ) -> io::Result<()> {
+    eprintln!("converting layer {}", name_to_string(id));
     let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id).await?;
 
     if storage_11::PersistentLayerStore::directory_exists(v11_store, id).await? {
