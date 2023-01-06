@@ -19,18 +19,25 @@ use bytes::Bytes;
 
 use serde::{Deserialize, Serialize};
 
-pub async fn convert_layer(from: &str, to: &str, work: &str, id_string: &str) -> io::Result<()> {
+pub async fn convert_layer(
+    from: &str,
+    to: &str,
+    work: &str,
+    naive: bool,
+    id_string: &str,
+) -> io::Result<()> {
     let v10_store = directory_10::DirectoryLayerStore::new(from);
     let v11_store = archive_11::ArchiveLayerStore::new(to);
     let id = string_to_name(id_string).unwrap();
 
-    convert_layer_with_stores(&v10_store, &v11_store, work, id).await
+    convert_layer_with_stores(&v10_store, &v11_store, work, naive, id).await
 }
 
 pub async fn convert_layer_with_stores(
     v10_store: &directory_10::DirectoryLayerStore,
     v11_store: &archive_11::ArchiveLayerStore,
     work: &str,
+    naive: bool,
     id: [u32; 5],
 ) -> io::Result<()> {
     let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id).await?;
@@ -43,22 +50,35 @@ pub async fn convert_layer_with_stores(
     }
 
     eprintln!("initial setup done");
-    let (mut mapping, offset) = get_mapping_and_offset(work, v10_store, id).await?;
-
-    eprintln!("parent mappings retrieved");
 
     storage_11::PersistentLayerStore::create_named_directory(v11_store, id).await?;
 
-    let (mapping_addition, offset) = convert_dictionaries(v10_store, v11_store, id, offset).await?;
-    mapping.extend(mapping_addition);
-    eprintln!("dictionaries converted");
-    convert_triples(v10_store, v11_store, id, is_child, &mapping).await?;
-    eprintln!("triples converted");
-    copy_unchanged_files(v10_store, v11_store, id).await?;
-    eprintln!("files copied");
-
-    rebuild_indexes(v11_store, id, is_child).await?;
-    eprintln!("indexes rebuilt");
+    let map;
+    let offset;
+    if naive {
+        naive_convert_dictionaries(v10_store, v11_store, id).await?;
+        eprintln!("dictionaries converted");
+        copy_unchanged_files(v10_store, v11_store, id).await?;
+        copy_indexes(v10_store, v11_store, id, is_child).await?;
+        eprintln!("files copied");
+        map = None;
+        offset = None;
+    } else {
+        let (mut mapping, offset_1) = get_mapping_and_offset(work, v10_store, id).await?;
+        eprintln!("parent mappings retrieved");
+        let (mapping_addition, offset_1) =
+            convert_dictionaries(v10_store, v11_store, id, offset_1).await?;
+        mapping.extend(mapping_addition);
+        eprintln!("dictionaries converted");
+        convert_triples(v10_store, v11_store, id, is_child, &mapping).await?;
+        eprintln!("triples converted");
+        copy_unchanged_files(v10_store, v11_store, id).await?;
+        eprintln!("files copied");
+        rebuild_indexes(v11_store, id, is_child).await?;
+        eprintln!("indexes rebuilt");
+        map = Some(mapping);
+        offset = Some(offset_1);
+    }
 
     storage_11::PersistentLayerStore::finalize(v11_store, id).await?;
     eprintln!("finalized!");
@@ -68,8 +88,10 @@ pub async fn convert_layer_with_stores(
     copy_file(v10_store, v11_store, id, V10_FILENAMES.rollup).await?;
     eprintln!("copied rollup file (if exists)");
 
-    write_parent_map(&work, id, mapping, offset)?;
-    eprintln!("written parent map to workdir");
+    if !naive {
+        write_parent_map(&work, id, map.unwrap(), offset.unwrap())?;
+        eprintln!("written parent map to workdir");
+    }
 
     Ok(())
 }
@@ -107,6 +129,86 @@ async fn get_mapping_and_offset(
     } else {
         Ok((HashMap::with_capacity(0), 0))
     }
+}
+
+async fn naive_convert_dictionaries(
+    v10_store: &directory_10::DirectoryLayerStore,
+    v11_store: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+) -> io::Result<()> {
+    let node_dict_pfc = storage_10::PersistentLayerStore::get_file(
+        v10_store,
+        id,
+        V10_FILENAMES.node_dictionary_blocks,
+    )
+    .await?;
+    let UntypedDictionaryOutput { offsets, data } =
+        convert_untyped_dictionary(node_dict_pfc.clone()).await?;
+
+    write_bytes_to_file(v11_store, id, V11_FILENAMES.node_dictionary_blocks, data);
+    write_bytes_to_file(
+        v11_store,
+        id,
+        V11_FILENAMES.node_dictionary_offsets,
+        offsets,
+    );
+
+    let predicate_dict_pfc = storage_10::PersistentLayerStore::get_file(
+        v10_store,
+        id,
+        V10_FILENAMES.predicate_dictionary_blocks,
+    )
+    .await?;
+    let UntypedDictionaryOutput { offsets, data } =
+        convert_untyped_dictionary(predicate_dict_pfc).await?;
+
+    write_bytes_to_file(
+        v11_store,
+        id,
+        V11_FILENAMES.predicate_dictionary_blocks,
+        data,
+    );
+    write_bytes_to_file(
+        v11_store,
+        id,
+        V11_FILENAMES.predicate_dictionary_offsets,
+        offsets,
+    );
+
+    let value_dict_pfc = storage_10::PersistentLayerStore::get_file(
+        v10_store,
+        id,
+        V10_FILENAMES.value_dictionary_blocks,
+    )
+    .await?;
+    let NaiveTypedDictionaryOutput {
+        types_present,
+        type_offsets,
+        offsets,
+        data,
+    } = convert_naive_typed_dictionary(value_dict_pfc).await?;
+
+    write_bytes_to_file(
+        v11_store,
+        id,
+        V11_FILENAMES.value_dictionary_types_present,
+        types_present,
+    );
+    write_bytes_to_file(
+        v11_store,
+        id,
+        V11_FILENAMES.value_dictionary_type_offsets,
+        type_offsets,
+    );
+    write_bytes_to_file(v11_store, id, V11_FILENAMES.value_dictionary_blocks, data);
+    write_bytes_to_file(
+        v11_store,
+        id,
+        V11_FILENAMES.value_dictionary_offsets,
+        offsets,
+    );
+
+    Ok(())
 }
 
 async fn convert_dictionaries(
@@ -273,6 +375,24 @@ async fn copy_unchanged_files(
     id: [u32; 5],
 ) -> io::Result<()> {
     for filename in UNCHANGED_FILES.iter() {
+        copy_file(from, to, id, filename).await?;
+    }
+
+    Ok(())
+}
+
+async fn copy_indexes(
+    from: &directory_10::DirectoryLayerStore,
+    to: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+    is_child: bool,
+) -> io::Result<()> {
+    let iter = if is_child {
+        CHILD_INDEX_FILES.iter()
+    } else {
+        BASE_INDEX_FILES.iter()
+    };
+    for filename in iter {
         copy_file(from, to, id, filename).await?;
     }
 

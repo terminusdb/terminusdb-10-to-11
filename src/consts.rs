@@ -324,3 +324,23 @@ pub const UNCHANGED_FILES: [&'static str; 38] = [
     V10_FILENAMES.pos_subjects,
     V10_FILENAMES.neg_subjects,
 ];
+
+pub const BASE_INDEX_FILES: [&'static str; 5] = [
+    V10_FILENAMES.pos_objects,
+    V10_FILENAMES.base_sp_o_adjacency_list_nums,
+    V10_FILENAMES.base_o_ps_adjacency_list_nums,
+    V10_FILENAMES.base_o_ps_adjacency_list_bit_index_blocks,
+    V10_FILENAMES.base_o_ps_adjacency_list_bit_index_sblocks,
+];
+pub const CHILD_INDEX_FILES: [&'static str; 10] = [
+    V10_FILENAMES.pos_objects,
+    V10_FILENAMES.neg_objects,
+    V10_FILENAMES.pos_sp_o_adjacency_list_nums,
+    V10_FILENAMES.neg_sp_o_adjacency_list_nums,
+    V10_FILENAMES.pos_o_ps_adjacency_list_nums,
+    V10_FILENAMES.pos_o_ps_adjacency_list_bit_index_blocks,
+    V10_FILENAMES.pos_o_ps_adjacency_list_bit_index_sblocks,
+    V10_FILENAMES.neg_o_ps_adjacency_list_nums,
+    V10_FILENAMES.neg_o_ps_adjacency_list_bit_index_blocks,
+    V10_FILENAMES.neg_o_ps_adjacency_list_bit_index_sblocks,
+];

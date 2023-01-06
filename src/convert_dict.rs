@@ -66,6 +66,40 @@ pub async fn convert_untyped_dictionary<F: storage_10::FileLoad + 'static>(
     })
 }
 
+pub struct NaiveTypedDictionaryOutput {
+    pub types_present: Bytes,
+    pub type_offsets: Bytes,
+    pub offsets: Bytes,
+    pub data: Bytes,
+}
+
+pub async fn convert_naive_typed_dictionary<F: storage_10::FileLoad + 'static>(
+    val_dict: F,
+) -> io::Result<NaiveTypedDictionaryOutput> {
+    let mut stream = pfc_10::dict_file_to_stream(val_dict).await?;
+
+    let mut builder = tfc_11::TypedDictBufBuilder::new(
+        BytesMut::new(),
+        BytesMut::new(),
+        BytesMut::new(),
+        BytesMut::new(),
+    );
+
+    while let Some(val) = stream.try_next().await? {
+        let entry = <String as tfc_11::TdbDataType>::make_entry(&val);
+        builder.add(entry);
+    }
+
+    let (types_present_buf, type_offsets_buf, offsets_buf, data_buf) = builder.finalize();
+
+    Ok(NaiveTypedDictionaryOutput {
+        types_present: types_present_buf.freeze(),
+        type_offsets: type_offsets_buf.freeze(),
+        offsets: offsets_buf.freeze(),
+        data: data_buf.freeze(),
+    })
+}
+
 pub struct TypedDictionaryOutput {
     pub types_present: Bytes,
     pub type_offsets: Bytes,
@@ -82,8 +116,7 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
 ) -> io::Result<TypedDictionaryOutput> {
     let node_count = pfc_10::dict_file_get_count(node_dict).await?;
     let val_count = pfc_10::dict_file_get_count(val_dict.clone()).await?;
-    let mut stream =
-        pfc_10::dict_file_to_indexed_stream(val_dict, node_count + offset).await?;
+    let mut stream = pfc_10::dict_file_to_indexed_stream(val_dict, node_count + offset).await?;
 
     let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> =
         Vec::with_capacity(val_count as usize);

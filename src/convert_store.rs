@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use tokio::fs;
 
-pub async fn convert_store(from: &str, to: &str, work: &str) -> io::Result<()> {
+pub async fn convert_store(from: &str, to: &str, work: &str, naive: bool) -> io::Result<()> {
     let v10_layer_store = directory_10::DirectoryLayerStore::new(from);
     let v10_label_store = directory_10::DirectoryLabelStore::new(from);
     let v11_layer_store = archive_11::ArchiveLayerStore::new(to);
@@ -20,7 +20,7 @@ pub async fn convert_store(from: &str, to: &str, work: &str) -> io::Result<()> {
     visit_queue.extend(reachable[&None].clone());
 
     while let Some(layer) = visit_queue.pop() {
-        convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, layer).await?;
+        convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, naive, layer).await?;
         if let Some(children) = reachable.get(&Some(layer)) {
             visit_queue.extend(children.clone());
         }

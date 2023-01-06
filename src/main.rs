@@ -42,6 +42,9 @@ enum Commands {
         /// The workdir to store mappings in
         #[arg(short = 'w', long = "workdir")]
         workdir: Option<String>,
+        /// Convert the layer assuming all values are strings
+        #[arg(long = "naive")]
+        naive: bool,
         /// The layer id to convert
         id: String,
     },
@@ -54,6 +57,9 @@ enum Commands {
         /// The workdir to store mappings in
         #[arg(short = 'w', long = "workdir")]
         workdir: Option<String>,
+        /// Convert the store assuming all values are strings
+        #[arg(long = "naive")]
+        naive: bool,
     },
 }
 
@@ -71,6 +77,7 @@ async fn main() -> io::Result<()> {
             from,
             to,
             workdir,
+            naive,
             id,
         } => {
             convert_layer(
@@ -80,11 +87,17 @@ async fn main() -> io::Result<()> {
                     .as_ref()
                     .map(|w| w.as_str())
                     .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
+                naive,
                 &id,
             )
             .await
         }
-        Commands::ConvertStore { from, to, workdir } => {
+        Commands::ConvertStore {
+            from,
+            to,
+            workdir,
+            naive,
+        } => {
             convert_store(
                 &from,
                 &to,
@@ -92,6 +105,7 @@ async fn main() -> io::Result<()> {
                     .as_ref()
                     .map(|w| w.as_str())
                     .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
+                naive,
             )
             .await
         }
