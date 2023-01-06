@@ -92,7 +92,12 @@ pub async fn find_reachable_layers(
         .group_by(|(parent, _)| parent.clone());
     let final_map: HashMap<Option<[u32; 5]>, Vec<[u32; 5]>> = group_iter
         .into_iter()
-        .map(|(k, g)| (k, g.map(|(_, v)| v).collect()))
+        .map(|(k, g)| {
+            let mut children: Vec<_> = g.map(|(_, v)| v).collect();
+            children.sort();
+            children.dedup();
+            (k, children)
+        })
         .collect();
 
     Ok(final_map)
