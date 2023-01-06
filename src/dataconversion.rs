@@ -5,10 +5,10 @@ use rug::Integer;
 use std::io::{Cursor, Read};
 
 use terminus_store_11::structure::{
-    tfc as tfc_11, AnyURI, Base64Binary, Date, DateTimeStamp, DayTimeDuration, Decimal, Duration,
-    Entity, GDay, GMonth, GMonthDay, GYear, GYearMonth, HexBinary, IDRef, LangString, Language,
-    NCName, NMToken, Name, NegativeInteger, NonNegativeInteger, NonPositiveInteger,
-    NormalizedString, PositiveInteger, QName, Token, YearMonthDuration, ID, AnySimpleType,
+    tfc as tfc_11, AnySimpleType, AnyURI, Base64Binary, Date, DateTimeStamp, DayTimeDuration,
+    Decimal, Duration, Entity, GDay, GMonth, GMonthDay, GYear, GYearMonth, HexBinary, IDRef,
+    LangString, Language, NCName, NMToken, Name, NegativeInteger, NonNegativeInteger,
+    NonPositiveInteger, NormalizedString, PositiveInteger, QName, Token, YearMonthDuration, ID,
 };
 
 pub enum LangOrType<'a> {
@@ -291,17 +291,17 @@ fn parse_duration(s: &str) -> Duration {
     let year = if cap[2].is_empty() {
         0_i64
     } else {
-        cap[2][0..cap[2].len()-1].parse::<i64>().unwrap()
+        cap[2][0..cap[2].len() - 1].parse::<i64>().unwrap()
     };
     let month = if cap[4].is_empty() {
         0_u8
     } else {
-        cap[4][0..cap[4].len()-1].parse::<u8>().unwrap()
+        cap[4][0..cap[4].len() - 1].parse::<u8>().unwrap()
     };
     let day = if cap[6].is_empty() {
         0_u8
     } else {
-        cap[6][0..cap[6].len()-1].parse::<u8>().unwrap()
+        cap[6][0..cap[6].len() - 1].parse::<u8>().unwrap()
     };
     let (hour, minute, second) = if cap[8].is_empty() {
         (0, 0, 0)
@@ -309,17 +309,17 @@ fn parse_duration(s: &str) -> Duration {
         let hour = if cap[9].is_empty() {
             0
         } else {
-            cap[9][0..cap[9].len()-1].parse::<u8>().unwrap()
+            cap[9][0..cap[9].len() - 1].parse::<u8>().unwrap()
         };
         let minute = if cap[11].is_empty() {
             0
         } else {
-            cap[11][0..cap[11].len()-1].parse::<u8>().unwrap()
+            cap[11][0..cap[11].len() - 1].parse::<u8>().unwrap()
         };
         let second = if cap[13].is_empty() {
             0
         } else {
-            cap[13][0..cap[13].len()-1].parse::<u8>().unwrap()
+            cap[13][0..cap[13].len() - 1].parse::<u8>().unwrap()
         };
         (hour, minute, second)
     };
