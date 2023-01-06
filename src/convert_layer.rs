@@ -19,6 +19,8 @@ use bytes::Bytes;
 
 use serde::{Deserialize, Serialize};
 
+use tokio::io::AsyncWriteExt;
+
 pub async fn convert_layer(
     from: &str,
     to: &str,
@@ -86,8 +88,7 @@ pub async fn convert_layer_with_stores(
 
     // we copy the rollup only after finalizing, as rollups are not
     // part of a layer under construction
-    copy_file(v10_store, v11_store, id, V10_FILENAMES.rollup).await?;
-    eprintln!("copied rollup file (if exists)");
+    copy_rollup_file(v10_store, v11_store, id).await?;
 
     if !naive {
         write_parent_map(&work, id, map.unwrap(), offset.unwrap())?;
@@ -615,6 +616,25 @@ async fn copy_file(
     let input = storage_10::PersistentLayerStore::get_file(from, id, file).await?;
     if let Some(map) = storage_10::FileLoad::map_if_exists(&input).await? {
         write_bytes_to_file(to, id, file, map);
+    }
+
+    Ok(())
+}
+
+async fn copy_rollup_file(
+    from: &directory_10::DirectoryLayerStore,
+    to: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+) -> io::Result<()> {
+    let input = storage_10::PersistentLayerStore::get_file(from, id, V10_FILENAMES.rollup).await?;
+    if let Some(map) = storage_10::FileLoad::map_if_exists(&input).await? {
+        let output =
+            storage_11::PersistentLayerStore::get_file(to, id, V11_FILENAMES.rollup).await?;
+        let mut output_writer = storage_11::FileStore::open_write(&output).await?;
+        output_writer.write_all(&map).await?;
+        output_writer.flush().await?;
+        storage_11::SyncableFile::sync_all(output_writer).await?;
+        eprintln!("copied rollup file");
     }
 
     Ok(())
