@@ -1,0 +1,34 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install requirements
+      run: sudo apt install build-essential m4 libgmp-dev
+    - name: Clone new terminusdb-store format
+      run: |
+        git clone https://github.com/terminusdb/terminusdb-store
+        cd terminusdb-store
+        git checkout archive_format
+    - name: Build
+      run: cargo build --verbose
+    - name: Build release
+      if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      run: cargo build --release
+    - name: Upload artifact
+      if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      uses: actions/upload-artifact@v3
+      with:
+        name: terminusdb-10-to-11
+        path: target/release/terminusdb-10-to-11
