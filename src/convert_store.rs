@@ -8,6 +8,7 @@ use std::io;
 use std::path::PathBuf;
 
 use tokio::fs;
+use futures::future;
 
 pub async fn convert_store(from: &str, to: &str, work: &str, naive: bool) -> io::Result<()> {
     let v10_layer_store = directory_10::DirectoryLayerStore::new(from);
@@ -17,15 +18,20 @@ pub async fn convert_store(from: &str, to: &str, work: &str, naive: bool) -> io:
     let reachable = find_reachable_layers(&v10_layer_store, &v10_label_store).await?;
 
     let mut visit_queue = Vec::new();
+    let mut tasks = Vec::new();
     visit_queue.extend(reachable[&None].clone());
-
     while let Some(layer) = visit_queue.pop() {
-        convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, naive, layer).await?;
+        let work_cloned = work.to_string();
+        let v10_layer_store_cloned = v10_layer_store.clone();
+        let v11_layer_store_cloned = v11_layer_store.clone();
+        tasks.push(tokio::spawn(async move {
+            convert_layer_with_stores(&v10_layer_store_cloned, &v11_layer_store_cloned, &work_cloned, naive, layer).await
+        }));
         if let Some(children) = reachable.get(&Some(layer)) {
             visit_queue.extend(children.clone());
         }
     }
-
+    future::join_all(tasks).await;
     convert_labels(from, to).await
 }
 
