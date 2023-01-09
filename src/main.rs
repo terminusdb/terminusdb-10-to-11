@@ -15,6 +15,8 @@ use std::io;
 
 use tokio;
 
+use thiserror::*;
+
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
@@ -63,8 +65,25 @@ enum Commands {
     },
 }
 
+#[derive(Error, Debug)]
+#[error(transparent)]
+pub enum CliError {
+    StoreConversion(#[from] StoreConversionError),
+    LayerConversion(#[from] LayerConversionError),
+    Io(#[from] io::Error),
+}
+
 #[tokio::main(flavor = "multi_thread")]
-async fn main() -> io::Result<()> {
+async fn main() {
+    let result = inner_main().await;
+
+    if let Err(e) = result {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+}
+
+async fn inner_main() -> Result<(), CliError> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -72,7 +91,7 @@ async fn main() -> io::Result<()> {
             from,
             to_offsets,
             to_data,
-        } => convert_untyped_dictionary_to_files(&from, &to_offsets, &to_data).await,
+        } => convert_untyped_dictionary_to_files(&from, &to_offsets, &to_data).await?,
         Commands::ConvertLayer {
             from,
             to,
@@ -90,7 +109,7 @@ async fn main() -> io::Result<()> {
                 naive,
                 &id,
             )
-            .await
+            .await?;
         }
         Commands::ConvertStore {
             from,
@@ -107,7 +126,9 @@ async fn main() -> io::Result<()> {
                     .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
                 naive,
             )
-            .await
+            .await?;
         }
     }
+
+    Ok(())
 }

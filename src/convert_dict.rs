@@ -8,7 +8,9 @@ use terminus_store_11::structure::tfc as tfc_11;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
-use crate::dataconversion::convert_value_string_to_dict_entry;
+use thiserror::*;
+
+use crate::dataconversion::{convert_value_string_to_dict_entry, DataConversionError};
 
 pub struct UntypedDictionaryOutput {
     pub offsets: Bytes,
@@ -109,11 +111,25 @@ pub struct TypedDictionaryOutput {
     pub offset: u64,
 }
 
+#[derive(Error, Debug)]
+pub enum DictionaryConversionError {
+    #[error("dictionary failed to convert id {id}: {error}")]
+    DataConversion { id: u64, error: DataConversionError },
+    #[error("io error: {0}")]
+    Io(io::Error),
+}
+
+impl From<io::Error> for DictionaryConversionError {
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
 pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     node_dict: F,
     val_dict: F,
     offset: u64,
-) -> io::Result<TypedDictionaryOutput> {
+) -> Result<TypedDictionaryOutput, DictionaryConversionError> {
     let node_count = pfc_10::dict_file_get_count(node_dict).await?;
     let val_count = pfc_10::dict_file_get_count(val_dict.clone()).await?;
     let mut stream = pfc_10::dict_file_to_indexed_stream(val_dict, node_count + offset).await?;
@@ -121,7 +137,11 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> =
         Vec::with_capacity(val_count as usize);
     while let Some((ix, val)) = stream.try_next().await? {
-        converted_vals.push((convert_value_string_to_dict_entry(&val), ix));
+        converted_vals.push((
+            convert_value_string_to_dict_entry(&val)
+                .map_err(|e| DictionaryConversionError::DataConversion { id: ix, error: e })?,
+            ix,
+        ));
     }
 
     converted_vals.sort();
