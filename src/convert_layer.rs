@@ -48,6 +48,9 @@ pub enum InnerLayerConversionError {
     FileCopyError { name: String, source: io::Error },
 
     #[error(transparent)]
+    ParentMapError(#[from] ParentMapError),
+
+    #[error(transparent)]
     Io(#[from] io::Error),
 }
 
@@ -150,36 +153,78 @@ pub async fn convert_layer_with_stores(
     Ok(())
 }
 
+#[derive(Error, Debug)]
+pub enum InnerParentMapError {
+    #[error("not found")]
+    ParentMapNotFound,
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Deserialization(#[from] serde_json::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ParentMapError {
+    #[error(transparent)]
+    Io(io::Error),
+    #[error("couldn't load parent map {}: {source}", name_to_string(*parent))]
+    Other {
+        parent: [u32; 5],
+        source: InnerParentMapError,
+    },
+}
+
+impl ParentMapError {
+    fn new<E: Into<InnerParentMapError>>(parent: [u32; 5], source: E) -> Self {
+        Self::Other {
+            parent,
+            source: source.into(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct ParentMap {
     offset: u64,
     mapping: Vec<(u64, u64)>,
 }
 
+async fn get_mapping_and_offset_from_parent(
+    workdir: &str,
+    parent: [u32; 5],
+) -> Result<(HashMap<u64, u64>, u64), ParentMapError> {
+    let parent_string = name_to_string(parent);
+    let mut pathbuf = PathBuf::from(workdir);
+    pathbuf.push(format!("{parent_string}.json"));
+    let file = std::fs::File::open(pathbuf);
+    if file.is_err() && file.as_ref().unwrap_err().kind() == io::ErrorKind::NotFound {
+        return Err(ParentMapError::new(
+            parent,
+            InnerParentMapError::ParentMapNotFound,
+        ));
+    }
+    let mut file = file.map_err(|e| ParentMapError::new(parent, e))?;
+    let ParentMap {
+        offset,
+        mapping: mapping_vec,
+    } = serde_json::from_reader(&mut file).map_err(|e| ParentMapError::new(parent, e))?;
+    let mut mapping = HashMap::with_capacity(mapping_vec.len());
+    mapping.extend(mapping_vec);
+
+    Ok((mapping, offset))
+}
+
 async fn get_mapping_and_offset(
     workdir: &str,
     store: &directory_10::DirectoryLayerStore,
     id: [u32; 5],
-) -> io::Result<(HashMap<u64, u64>, u64)> {
+) -> Result<(HashMap<u64, u64>, u64), ParentMapError> {
     // look up parent id if applicable
-    if let Some(parent) = storage_10::LayerStore::get_layer_parent_name(store, id).await? {
-        let parent_string = name_to_string(parent);
-        let mut pathbuf = PathBuf::from(workdir);
-        pathbuf.push(format!("{parent_string}.json"));
-        let file = std::fs::File::open(pathbuf);
-        if file.is_err() && file.as_ref().unwrap_err().kind() == io::ErrorKind::NotFound {
-            let id_string = name_to_string(id);
-            panic!("couldn't find parent map for {parent_string} while converting {id_string}");
-        }
-        let mut file = file?;
-        let ParentMap {
-            offset,
-            mapping: mapping_vec,
-        } = serde_json::from_reader(&mut file)?;
-        let mut mapping = HashMap::with_capacity(mapping_vec.len());
-        mapping.extend(mapping_vec);
-
-        Ok((mapping, offset))
+    if let Some(parent) = storage_10::LayerStore::get_layer_parent_name(store, id)
+        .await
+        .map_err(|e| ParentMapError::Io(e))?
+    {
+        get_mapping_and_offset_from_parent(workdir, parent).await
     } else {
         Ok((HashMap::with_capacity(0), 0))
     }
