@@ -121,7 +121,7 @@ pub async fn convert_typed_dictionary<F: storage_10::FileLoad + 'static>(
     let mut converted_vals: Vec<(tfc_11::TypedDictEntry, u64)> =
         Vec::with_capacity(val_count as usize);
     while let Some((ix, val)) = stream.try_next().await? {
-        converted_vals.push((convert_value_string_to_dict_entry(&val), ix));
+        converted_vals.push((convert_value_string_to_dict_entry(&val).unwrap(), ix));
     }
 
     converted_vals.sort();
