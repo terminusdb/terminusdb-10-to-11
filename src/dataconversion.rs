@@ -179,7 +179,19 @@ pub fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry
             } else if t == "http://www.w3.org/2001/XMLSchema#ENTITY" {
                 let s = s[1..s.len() - 1].to_string();
                 <Entity as tfc_11::TdbDataType>::make_entry(&s)
-            } else if t == "http://www.w3.org/2001/XMLSchema#anySimpleType" {
+            } else if t == "http://www.w3.org/2001/XMLSchema#anySimpleType"
+                || t == "http://terminusdb.com/schema/xdd#coordinate"
+                || t == "http://terminusdb.com/schema/xdd#coordinatePolygon"
+                || t == "http://terminusdb.com/schema/xdd#coordinatePolyline"
+                || t == "http://terminusdb.com/schema/xdd#dateRange"
+                || t == "http://terminusdb.com/schema/xdd#gYearRange"
+                || t == "http://terminusdb.com/schema/xdd#integerRange"
+                || t == "http://terminusdb.com/schema/xdd#decimalRange"
+                || t == "http://terminusdb.com/schema/xdd#json"
+                || t == "http://terminusdb.com/schema/xdd#url"
+                || t == "http://terminusdb.com/schema/xdd#email"
+                || t == "http://terminusdb.com/schema/xdd#html"
+            {
                 let s = s[1..s.len() - 1].to_string();
                 <AnySimpleType as tfc_11::TdbDataType>::make_entry(&s)
             } else {
