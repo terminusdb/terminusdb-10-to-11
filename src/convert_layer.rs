@@ -50,6 +50,21 @@ pub enum InnerLayerConversionError {
     #[error(transparent)]
     ParentMapError(#[from] ParentMapError),
 
+    #[error("failed to convert triple map: {0}")]
+    TripleConversionError(io::Error),
+
+    #[error("failed to rebuild indexes: {0}")]
+    RebuildIndexError(io::Error),
+
+    #[error("failed to finalize layer: {0}")]
+    FinalizationError(io::Error),
+
+    #[error("failed to copy rollup file: {0}")]
+    RollupFileCopyError(io::Error),
+
+    #[error("failed to write the parent map: {0}")]
+    ParentMapWriteError(io::Error),
+
     #[error(transparent)]
     Io(#[from] io::Error),
 }
@@ -121,13 +136,17 @@ pub async fn convert_layer_with_stores(
         eprintln!("dictionaries converted");
         convert_triples(v10_store, v11_store, id, is_child, &mapping)
             .await
-            .map_err(|e| LayerConversionError::new(id, e))?;
+            .map_err(|e| {
+                LayerConversionError::new(id, InnerLayerConversionError::TripleConversionError(e))
+            })?;
         eprintln!("triples converted");
         copy_unchanged_files(v10_store, v11_store, id).await?;
         eprintln!("files copied");
         rebuild_indexes(v11_store, id, is_child)
             .await
-            .map_err(|e| LayerConversionError::new(id, e))?;
+            .map_err(|e| {
+                LayerConversionError::new(id, InnerLayerConversionError::RebuildIndexError(e))
+            })?;
         eprintln!("indexes rebuilt");
         map = Some(mapping);
         offset = Some(offset_1);
@@ -135,18 +154,23 @@ pub async fn convert_layer_with_stores(
 
     storage_11::PersistentLayerStore::finalize(v11_store, id)
         .await
-        .map_err(|e| LayerConversionError::new(id, e))?;
+        .map_err(|e| {
+            LayerConversionError::new(id, InnerLayerConversionError::FinalizationError(e))
+        })?;
     eprintln!("finalized!");
 
     // we copy the rollup only after finalizing, as rollups are not
     // part of a layer under construction
     copy_rollup_file(v10_store, v11_store, id)
         .await
-        .map_err(|e| LayerConversionError::new(id, e))?;
+        .map_err(|e| {
+            LayerConversionError::new(id, InnerLayerConversionError::RollupFileCopyError(e))
+        })?;
 
     if !naive {
-        write_parent_map(&work, id, map.unwrap(), offset.unwrap())
-            .map_err(|e| LayerConversionError::new(id, e))?;
+        write_parent_map(&work, id, map.unwrap(), offset.unwrap()).map_err(|e| {
+            LayerConversionError::new(id, InnerLayerConversionError::ParentMapWriteError(e))
+        })?;
         eprintln!("written parent map to workdir");
     }
 
