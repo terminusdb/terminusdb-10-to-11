@@ -4,6 +4,16 @@ use regex::Regex;
 use rug::Integer;
 use std::io::{Cursor, Read};
 
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum DataConversionError {
+    #[error("value string in store had unexpected format `{0}`")]
+    ValueStringHadUnexpectedFormat(String),
+}
+
+pub type Result<T> = std::result::Result<T, DataConversionError>;
+
 use terminus_store_11::structure::{
     tfc as tfc_11, AnySimpleType, AnyURI, Base64Binary, Date, DateTimeStamp, DayTimeDuration,
     Decimal, Duration, Entity, GDay, GMonth, GMonthDay, GYear, GYearMonth, HexBinary, IDRef,
@@ -16,25 +26,59 @@ pub enum LangOrType<'a> {
     Type(&'a str, &'a str),
 }
 
-pub fn value_string_to_slices(s: &str) -> LangOrType {
-    // The format of these value strings is something like
+pub fn value_string_to_slices(s: &str) -> Result<LangOrType> {
+    if s.is_empty() {
+        return Err(DataConversionError::ValueStringHadUnexpectedFormat(
+            s.to_string(),
+        ));
+    }
+
     if s.as_bytes()[s.len() - 1] == b'\'' {
-        let pos = s[..s.len() - 1].rfind('\'').unwrap();
+        let pos = s[..s.len() - 1].rfind('\'');
+        if pos.is_none() {
+            return Err(DataConversionError::ValueStringHadUnexpectedFormat(
+                s.to_string(),
+            ));
+        }
+        let pos = pos.unwrap();
+        if pos == 0 {
+            return Err(DataConversionError::ValueStringHadUnexpectedFormat(
+                s.to_string(),
+            ));
+        }
+
         if s.as_bytes()[pos - 1] == b'^' {
-            assert!(s.as_bytes()[pos - 2] == b'^');
-            LangOrType::Type(&s[0..pos - 2], &s[pos + 1..s.len() - 1])
+            if pos == 1 || s.as_bytes()[pos - 2] != b'^' {
+                return Err(DataConversionError::ValueStringHadUnexpectedFormat(
+                    s.to_string(),
+                ));
+            }
+
+            Ok(LangOrType::Type(&s[0..pos - 2], &s[pos + 1..s.len() - 1]))
         } else {
-            assert!(s.as_bytes()[pos - 1] == b'@');
-            LangOrType::Lang(&s[..pos - 1], &s[pos..])
+            if s.as_bytes()[pos - 1] != b'@' {
+                return Err(DataConversionError::ValueStringHadUnexpectedFormat(
+                    s.to_string(),
+                ));
+            }
+
+            Ok(LangOrType::Lang(&s[..pos - 1], &s[pos..]))
         }
     } else {
-        let pos = s.rfind('@').unwrap();
-        LangOrType::Lang(&s[..pos], &s[pos + 1..])
+        let pos = s.rfind('@');
+        if pos.is_none() {
+            return Err(DataConversionError::ValueStringHadUnexpectedFormat(
+                s.to_string(),
+            ));
+        }
+        let pos = pos.unwrap();
+
+        Ok(LangOrType::Lang(&s[..pos], &s[pos + 1..]))
     }
 }
 
 pub fn convert_value_string_to_dict_entry(value: &str) -> tfc_11::TypedDictEntry {
-    let res = value_string_to_slices(value);
+    let res = value_string_to_slices(value).unwrap();
     match res {
         LangOrType::Lang(s, l) => {
             <LangString as tfc_11::TdbDataType>::make_entry(&format!("{l}@{s}"))
