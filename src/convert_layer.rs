@@ -38,12 +38,17 @@ pub async fn convert_layer(
 }
 
 #[derive(Debug, Error)]
-#[error(transparent)]
 pub enum InnerLayerConversionError {
+    #[error(transparent)]
     DictionaryConversion(#[from] DictionaryConversionError),
-    Io(#[from] io::Error),
     #[error("layer was already converted")]
     LayerAlreadyConverted,
+
+    #[error("failed to copy {name}: {source}")]
+    FileCopyError { name: String, source: io::Error },
+
+    #[error(transparent)]
+    Io(#[from] io::Error),
 }
 
 #[derive(Debug, Error)]
@@ -97,13 +102,8 @@ pub async fn convert_layer_with_stores(
             .await
             .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("dictionaries converted");
-        copy_unchanged_files(v10_store, v11_store, id)
-            .await
-            .map_err(|e| LayerConversionError::new(id, e))?;
-        copy_indexes(v10_store, v11_store, id, is_child)
-            .await
-            .map_err(|e| LayerConversionError::new(id, e))?;
-        eprintln!("files copied");
+        copy_unchanged_files(v10_store, v11_store, id).await?;
+        copy_indexes(v10_store, v11_store, id, is_child).await?;
         map = None;
         offset = None;
     } else {
@@ -120,9 +120,7 @@ pub async fn convert_layer_with_stores(
             .await
             .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("triples converted");
-        copy_unchanged_files(v10_store, v11_store, id)
-            .await
-            .map_err(|e| LayerConversionError::new(id, e))?;
+        copy_unchanged_files(v10_store, v11_store, id).await?;
         eprintln!("files copied");
         rebuild_indexes(v11_store, id, is_child)
             .await
@@ -429,7 +427,7 @@ async fn copy_unchanged_files(
     from: &directory_10::DirectoryLayerStore,
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     for filename in UNCHANGED_FILES.iter() {
         copy_file(from, to, id, filename).await?;
     }
@@ -442,7 +440,7 @@ async fn copy_indexes(
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     is_child: bool,
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     let iter = if is_child {
         CHILD_INDEX_FILES.iter()
     } else {
@@ -658,6 +656,22 @@ fn write_bytes_to_file(
 }
 
 async fn copy_file(
+    from: &directory_10::DirectoryLayerStore,
+    to: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+    file: &str,
+) -> Result<(), LayerConversionError> {
+    inner_copy_file(from, to, id, file).await.map_err(|e| {
+        LayerConversionError::new(
+            id,
+            InnerLayerConversionError::FileCopyError {
+                name: file.to_string(),
+                source: e,
+            },
+        )
+    })
+}
+async fn inner_copy_file(
     from: &directory_10::DirectoryLayerStore,
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
