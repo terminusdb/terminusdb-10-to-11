@@ -21,18 +21,45 @@ use serde::{Deserialize, Serialize};
 
 use tokio::io::AsyncWriteExt;
 
+use thiserror::Error;
+
 pub async fn convert_layer(
     from: &str,
     to: &str,
     work: &str,
     naive: bool,
     id_string: &str,
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     let v10_store = directory_10::DirectoryLayerStore::new(from);
     let v11_store = archive_11::ArchiveLayerStore::new(to);
     let id = string_to_name(id_string).unwrap();
 
     convert_layer_with_stores(&v10_store, &v11_store, work, naive, id).await
+}
+
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub enum InnerLayerConversionError {
+    DictionaryConversion(#[from] DictionaryConversionError),
+    Io(#[from] io::Error),
+    #[error("layer was already converted")]
+    LayerAlreadyConverted,
+}
+
+#[derive(Debug, Error)]
+#[error("Failed to convert layer {}: {source}", name_to_string(self.layer))]
+pub struct LayerConversionError {
+    layer: [u32; 5],
+    source: InnerLayerConversionError,
+}
+
+impl LayerConversionError {
+    fn new<E: Into<InnerLayerConversionError>>(layer: [u32; 5], source: E) -> Self {
+        Self {
+            layer,
+            source: source.into(),
+        }
+    }
 }
 
 pub async fn convert_layer_with_stores(
@@ -41,57 +68,84 @@ pub async fn convert_layer_with_stores(
     work: &str,
     naive: bool,
     id: [u32; 5],
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     eprintln!("converting layer {}", name_to_string(id));
-    let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id).await?;
+    let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
 
-    if storage_11::PersistentLayerStore::directory_exists(v11_store, id).await? {
-        panic!(
-            "layer appears to already have been converted: {}",
-            name_to_string(id)
-        );
+    if storage_11::PersistentLayerStore::directory_exists(v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?
+    {
+        return Err(LayerConversionError::new(
+            id,
+            InnerLayerConversionError::LayerAlreadyConverted,
+        ));
     }
 
     eprintln!("initial setup done");
 
-    storage_11::PersistentLayerStore::create_named_directory(v11_store, id).await?;
+    storage_11::PersistentLayerStore::create_named_directory(v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
 
     let map;
     let offset;
     if naive {
-        naive_convert_dictionaries(v10_store, v11_store, id).await?;
+        naive_convert_dictionaries(v10_store, v11_store, id)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("dictionaries converted");
-        copy_unchanged_files(v10_store, v11_store, id).await?;
-        copy_indexes(v10_store, v11_store, id, is_child).await?;
+        copy_unchanged_files(v10_store, v11_store, id)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
+        copy_indexes(v10_store, v11_store, id, is_child)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("files copied");
         map = None;
         offset = None;
     } else {
-        let (mut mapping, offset_1) = get_mapping_and_offset(work, v10_store, id).await?;
+        let (mut mapping, offset_1) = get_mapping_and_offset(work, v10_store, id)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("parent mappings retrieved");
-        let (mapping_addition, offset_1) =
-            convert_dictionaries(v10_store, v11_store, id, offset_1).await?;
+        let (mapping_addition, offset_1) = convert_dictionaries(v10_store, v11_store, id, offset_1)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         mapping.extend(mapping_addition);
         eprintln!("dictionaries converted");
-        convert_triples(v10_store, v11_store, id, is_child, &mapping).await?;
+        convert_triples(v10_store, v11_store, id, is_child, &mapping)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("triples converted");
-        copy_unchanged_files(v10_store, v11_store, id).await?;
+        copy_unchanged_files(v10_store, v11_store, id)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("files copied");
-        rebuild_indexes(v11_store, id, is_child).await?;
+        rebuild_indexes(v11_store, id, is_child)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("indexes rebuilt");
         map = Some(mapping);
         offset = Some(offset_1);
     }
 
-    storage_11::PersistentLayerStore::finalize(v11_store, id).await?;
+    storage_11::PersistentLayerStore::finalize(v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
     eprintln!("finalized!");
 
     // we copy the rollup only after finalizing, as rollups are not
     // part of a layer under construction
-    copy_rollup_file(v10_store, v11_store, id).await?;
+    copy_rollup_file(v10_store, v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
 
     if !naive {
-        write_parent_map(&work, id, map.unwrap(), offset.unwrap())?;
+        write_parent_map(&work, id, map.unwrap(), offset.unwrap())
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("written parent map to workdir");
     }
 
@@ -218,7 +272,7 @@ async fn convert_dictionaries(
     v11_store: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     offset: u64,
-) -> io::Result<(HashMap<u64, u64>, u64)> {
+) -> Result<(HashMap<u64, u64>, u64), DictionaryConversionError> {
     let node_dict_pfc = storage_10::PersistentLayerStore::get_file(
         v10_store,
         id,

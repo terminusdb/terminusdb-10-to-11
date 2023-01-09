@@ -9,7 +9,21 @@ use std::path::PathBuf;
 
 use tokio::fs;
 
-pub async fn convert_store(from: &str, to: &str, work: &str, naive: bool) -> io::Result<()> {
+use thiserror::*;
+
+#[derive(Error, Debug)]
+#[error(transparent)]
+pub enum StoreConversionError {
+    LayerConversion(#[from] LayerConversionError),
+    Io(#[from] io::Error),
+}
+
+pub async fn convert_store(
+    from: &str,
+    to: &str,
+    work: &str,
+    naive: bool,
+) -> Result<(), StoreConversionError> {
     let v10_layer_store = directory_10::DirectoryLayerStore::new(from);
     let v10_label_store = directory_10::DirectoryLabelStore::new(from);
     let v11_layer_store = archive_11::ArchiveLayerStore::new(to);
@@ -26,7 +40,9 @@ pub async fn convert_store(from: &str, to: &str, work: &str, naive: bool) -> io:
         }
     }
 
-    convert_labels(from, to).await
+    convert_labels(from, to).await?;
+
+    Ok(())
 }
 
 pub async fn convert_labels(from: &str, to: &str) -> io::Result<()> {
