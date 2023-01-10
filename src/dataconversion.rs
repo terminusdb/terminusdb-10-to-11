@@ -2,7 +2,10 @@ use chrono::{NaiveDateTime, NaiveTime};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rug::Integer;
-use std::io::{Cursor, Read};
+use std::{
+    borrow::Cow,
+    io::{Cursor, Read},
+};
 
 use thiserror::Error;
 
@@ -16,13 +19,23 @@ pub enum DataConversionError {
     UnrecognizedType { value: String, typ: String },
 }
 
+impl From<DecimalValidationError> for DataConversionError {
+    fn from(e: DecimalValidationError) -> Self {
+        Self::ParseError {
+            value: e.value,
+            typ: "http://www.w3.org/2001/XMLSchema#decimal".to_string(),
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, DataConversionError>;
 
 use terminus_store_11::structure::{
     tfc as tfc_11, AnySimpleType, AnyURI, Base64Binary, Date, DateTimeStamp, DayTimeDuration,
-    Decimal, Duration, Entity, GDay, GMonth, GMonthDay, GYear, GYearMonth, HexBinary, IDRef,
-    LangString, Language, NCName, NMToken, Name, NegativeInteger, NonNegativeInteger,
-    NonPositiveInteger, NormalizedString, PositiveInteger, QName, Token, YearMonthDuration, ID,
+    Decimal, DecimalValidationError, Duration, Entity, GDay, GMonth, GMonthDay, GYear, GYearMonth,
+    HexBinary, IDRef, LangString, Language, NCName, NMToken, Name, NegativeInteger,
+    NonNegativeInteger, NonPositiveInteger, NormalizedString, PositiveInteger, QName, Token,
+    YearMonthDuration, ID,
 };
 
 pub enum LangOrType<'a> {
@@ -92,7 +105,8 @@ pub fn convert_value_string_to_dict_entry(value: &str) -> Result<tfc_11::TypedDi
                 let b = s == "true";
                 <bool as tfc_11::TdbDataType>::make_entry(&b)
             } else if t == "http://www.w3.org/2001/XMLSchema#decimal" {
-                <Decimal as tfc_11::TdbDataType>::make_entry(&Decimal(s.to_string()))
+                let s = normalize_decimal(s)?;
+                <Decimal as tfc_11::TdbDataType>::make_entry(&Decimal::new(s.into_owned())?)
             } else if t == "http://www.w3.org/2001/XMLSchema#double" {
                 <f64 as tfc_11::TdbDataType>::make_entry(&s.parse::<f64>().map_err(|_| {
                     DataConversionError::ParseError {
@@ -523,4 +537,56 @@ fn parse_duration(s: &str) -> Result<Duration> {
         minute,
         second,
     })
+}
+
+pub fn normalize_decimal(s: &str) -> std::result::Result<Cow<str>, DecimalValidationError> {
+    lazy_static! {
+        static ref NORMALIZED_RE: Regex = Regex::new(r"^-?\d+(\.\d+)?$").unwrap();
+        static ref SCIENTIFIC_RE: Regex =
+            Regex::new(r"^(-?)(\d+)(\.(\d+)?)[Ee]([+-]\d+)$").unwrap();
+    }
+    if NORMALIZED_RE.is_match(s) {
+        eprintln!("already normalized: {s}");
+        Ok(Cow::Borrowed(s))
+    } else if let Some(cap) = SCIENTIFIC_RE.captures(s) {
+        let prefix = &cap[2];
+        let suffix = &cap[4];
+        eprintln!("{}", &cap[5]);
+        let exp = cap[5].parse::<i64>().unwrap();
+        let new_decimal = if exp < 0 {
+            let padding = "0".repeat(-exp as usize - 1);
+            format!("0.{padding}{prefix}{suffix}")
+        } else {
+            let exp = exp as usize;
+            if suffix.len() <= exp {
+                let padding = "0".repeat(exp - suffix.len());
+                format!("{prefix}{suffix}{padding}")
+            } else {
+                let beginning = &suffix[..exp];
+                let end = &suffix[exp..];
+                format!("{prefix}{beginning}.{end}")
+            }
+        };
+        Ok(Cow::Owned(new_decimal))
+    } else {
+        Err(DecimalValidationError {
+            value: s.to_string(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check_decimal(input: &str, expected: &str) {
+        assert_eq!(expected, normalize_decimal(input).unwrap());
+    }
+
+    #[test]
+    fn check_normalization() {
+        check_decimal("1.03432e+10", "10343200000");
+        check_decimal("1.03432e-10", "0.000000000103432");
+        check_decimal("1.03432e+2", "103.432");
+    }
 }
