@@ -1017,6 +1017,7 @@ dependencies = [
  "num-traits",
  "rand",
  "rayon",
+ "regex",
  "rug",
  "tar",
  "thiserror",
