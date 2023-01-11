@@ -62,6 +62,9 @@ enum Commands {
         /// Convert the store assuming all values are strings
         #[arg(long = "naive")]
         naive: bool,
+        /// Keep going with other layers if a layer does not convert
+        #[arg(short = 'c', long = "continue")]
+        keep_going: bool,
     },
 }
 
@@ -116,6 +119,7 @@ async fn inner_main() -> Result<(), CliError> {
             to,
             workdir,
             naive,
+            keep_going,
         } => {
             convert_store(
                 &from,
@@ -125,6 +129,7 @@ async fn inner_main() -> Result<(), CliError> {
                     .map(|w| w.as_str())
                     .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
                 naive,
+                keep_going,
             )
             .await?;
         }
