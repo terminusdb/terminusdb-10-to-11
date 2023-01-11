@@ -17,6 +17,8 @@ use thiserror::*;
 #[error(transparent)]
 pub enum StoreConversionError {
     LayerConversion(#[from] LayerConversionError),
+    #[error("Some layer conversions failed")]
+    LayerConversionsFailed(Vec<[u32; 5]>),
     Io(#[from] io::Error),
 }
 
@@ -45,6 +47,8 @@ pub async fn convert_store(
     let mut visit_queue = Vec::new();
     visit_queue.extend(reachable[&None].clone());
 
+    let mut failures = Vec::new();
+
     while let Some(layer) = visit_queue.pop() {
         let result =
             convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, naive, layer).await;
@@ -57,15 +61,20 @@ pub async fn convert_store(
             error_log.write_all(e.to_string().as_bytes()).await?;
             error_log.write_all(b"\n").await?;
             error_log.flush().await?;
-            if !keep_going {
+            if keep_going {
+                failures.push(layer);
+            } else {
                 return Err(e.into());
             }
         }
     }
 
-    convert_labels(from, to).await?;
-
-    Ok(())
+    if failures.is_empty() {
+        convert_labels(from, to).await?;
+        Ok(())
+    } else {
+        Err(StoreConversionError::LayerConversionsFailed(failures))
+    }
 }
 
 pub async fn convert_labels(from: &str, to: &str) -> io::Result<()> {
