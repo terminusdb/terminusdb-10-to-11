@@ -1,5 +1,7 @@
 use terminus_store_10::storage::directory as directory_10;
 use terminus_store_11::storage::archive as archive_11;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 
 use crate::convert_layer::*;
 use crate::reachable::*;
@@ -23,6 +25,7 @@ pub async fn convert_store(
     to: &str,
     work: &str,
     naive: bool,
+    keep_going: bool,
 ) -> Result<(), StoreConversionError> {
     let v10_layer_store = directory_10::DirectoryLayerStore::new(from);
     let v10_label_store = directory_10::DirectoryLabelStore::new(from);
@@ -30,13 +33,33 @@ pub async fn convert_store(
 
     let reachable = find_reachable_layers(&v10_layer_store, &v10_label_store).await?;
 
+    let mut options = OpenOptions::new();
+    options.create(true);
+    options.write(true);
+    let mut error_path = PathBuf::from(work);
+    std::fs::create_dir_all(&error_path)?;
+    error_path.push("error.log");
+    let mut error_log = options.open(error_path).await?;
+    println!("error log opened");
+
     let mut visit_queue = Vec::new();
     visit_queue.extend(reachable[&None].clone());
 
     while let Some(layer) = visit_queue.pop() {
-        convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, naive, layer).await?;
-        if let Some(children) = reachable.get(&Some(layer)) {
-            visit_queue.extend(children.clone());
+        let result =
+            convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, naive, layer).await;
+        if let Ok(()) = result {
+            if let Some(children) = reachable.get(&Some(layer)) {
+                visit_queue.extend(children.clone());
+            }
+        } else if let Err(e) = result {
+            eprintln!("ERROR: {e}");
+            error_log.write_all(e.to_string().as_bytes()).await?;
+            error_log.write_all(b"\n").await?;
+            error_log.flush().await?;
+            if !keep_going {
+                return Err(e.into());
+            }
         }
     }
 
