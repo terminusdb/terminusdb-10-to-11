@@ -284,7 +284,7 @@ pub const V11_FILENAMES: Filenames = Filenames {
     rollup: "rollup.hex",
 };
 
-pub const UNCHANGED_FILES: [&'static str; 38] = [
+pub const UNCHANGED_FILES: [&'static str; 41] = [
     V10_FILENAMES.predicate_idmap_bits,
     V10_FILENAMES.predicate_idmap_bit_index_blocks,
     V10_FILENAMES.predicate_idmap_bit_index_sblocks,
@@ -323,6 +323,10 @@ pub const UNCHANGED_FILES: [&'static str; 38] = [
     V10_FILENAMES.neg_predicate_wavelet_tree_bit_index_sblocks,
     V10_FILENAMES.pos_subjects,
     V10_FILENAMES.neg_subjects,
+
+    V10_FILENAMES.predicate_idmap_bits,
+    V10_FILENAMES.predicate_idmap_bit_index_blocks,
+    V10_FILENAMES.predicate_idmap_bit_index_sblocs,
 ];
 
 pub const BASE_INDEX_FILES: [&'static str; 5] = [
