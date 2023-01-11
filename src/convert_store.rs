@@ -51,7 +51,9 @@ pub async fn convert_store(
     println!("error log opened");
 
     let status_hashmap = get_status_hashmap(work).await?;
+    println!("read status map");
     let mut status_log = status_log(work).await?;
+    println!("opened status log");
 
     let mut visit_queue = Vec::new();
     visit_queue.extend(reachable[&None].clone());
@@ -173,10 +175,11 @@ pub async fn write_status(
 
 pub async fn status_log(work: &str) -> io::Result<fs::File> {
     let mut completed_options = OpenOptions::new();
+    completed_options.create(true);
     completed_options.append(true);
     let mut completed_path = PathBuf::from(work);
     std::fs::create_dir_all(&completed_path)?;
-    completed_path.push("completed.log");
+    completed_path.push("status.log");
     let completed_log = completed_options.open(completed_path).await?;
     println!("error log opened");
     Ok(completed_log)
