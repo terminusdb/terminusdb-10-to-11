@@ -61,7 +61,10 @@ pub async fn convert_store(
     while let Some(layer) = visit_queue.pop() {
         let status = status_hashmap.get(&layer);
         match status {
-            Some(ConversionStatus::Completed) => continue,
+            Some(ConversionStatus::Completed) => {
+                println!("skipping: {}", name_to_string(layer));
+                continue;
+            }
             Some(_) => layer_cleanup(to, layer).await?,
             None => (),
         }
