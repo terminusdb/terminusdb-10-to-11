@@ -1,10 +1,13 @@
 use terminus_store_10::storage as storage_10;
 use terminus_store_10::storage::directory as directory_10;
+use terminus_store_10::structure as structure_10;
+use terminus_store_10::structure::util as util_10;
 use terminus_store_11::layer::builder as builder_11;
 use terminus_store_11::storage as storage_11;
 use terminus_store_11::storage::archive as archive_11;
 use terminus_store_11::storage::consts as consts_11;
 use terminus_store_11::storage::{name_to_string, string_to_name};
+use terminus_store_11::structure as structure_11;
 use tokio::io::AsyncReadExt;
 
 use crate::consts::*;
@@ -52,6 +55,9 @@ pub enum InnerLayerConversionError {
 
     #[error("failed to convert triple map: {0}")]
     TripleConversionError(io::Error),
+
+    #[error("failed to convert node value idmap: {0}")]
+    NodeValueIdmapConversionError(io::Error),
 
     #[error("failed to rebuild indexes: {0}")]
     RebuildIndexError(io::Error),
@@ -121,7 +127,7 @@ pub async fn convert_layer_with_stores(
             .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("dictionaries converted");
         copy_unchanged_files(v10_store, v11_store, id).await?;
-        copy_indexes(v10_store, v11_store, id, is_child).await?;
+        copy_naive_unchanged_files(v10_store, v11_store, id, is_child).await?;
         map = None;
         offset = None;
     } else {
@@ -129,10 +135,11 @@ pub async fn convert_layer_with_stores(
             .await
             .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("parent mappings retrieved");
-        let (mapping_addition, offset_1) = convert_dictionaries(v10_store, v11_store, id, offset_1)
-            .await
-            .map_err(|e| LayerConversionError::new(id, e))?;
-        mapping.extend(mapping_addition);
+        let (mapping_addition, new_offset, num_elements) =
+            convert_dictionaries(v10_store, v11_store, id, offset_1)
+                .await
+                .map_err(|e| LayerConversionError::new(id, e))?;
+        mapping.extend(mapping_addition.clone());
         eprintln!("dictionaries converted");
         convert_triples(v10_store, v11_store, id, is_child, &mapping)
             .await
@@ -140,6 +147,21 @@ pub async fn convert_layer_with_stores(
                 LayerConversionError::new(id, InnerLayerConversionError::TripleConversionError(e))
             })?;
         eprintln!("triples converted");
+        convert_node_value_idmap(
+            v10_store,
+            v11_store,
+            id,
+            offset_1,
+            num_elements,
+            &mapping_addition,
+        )
+        .await
+        .map_err(|e| {
+            LayerConversionError::new(
+                id,
+                InnerLayerConversionError::NodeValueIdmapConversionError(e),
+            )
+        })?;
         copy_unchanged_files(v10_store, v11_store, id).await?;
         eprintln!("files copied");
         rebuild_indexes(v11_store, id, is_child)
@@ -149,7 +171,7 @@ pub async fn convert_layer_with_stores(
             })?;
         eprintln!("indexes rebuilt");
         map = Some(mapping);
-        offset = Some(offset_1);
+        offset = Some(new_offset);
     }
 
     storage_11::PersistentLayerStore::finalize(v11_store, id)
@@ -353,7 +375,7 @@ async fn convert_dictionaries(
     v11_store: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     offset: u64,
-) -> Result<(HashMap<u64, u64>, u64), DictionaryConversionError> {
+) -> Result<(HashMap<u64, u64>, u64, u64), DictionaryConversionError> {
     let node_dict_pfc = storage_10::PersistentLayerStore::get_file(
         v10_store,
         id,
@@ -405,7 +427,7 @@ async fn convert_dictionaries(
         offsets,
         data,
         mapping,
-        offset,
+        offset: new_offset,
     } = convert_typed_dictionary(node_dict_pfc, value_dict_pfc, offset).await?;
 
     write_bytes_to_file(
@@ -428,7 +450,7 @@ async fn convert_dictionaries(
         offsets,
     );
 
-    Ok((mapping, offset))
+    Ok((mapping, new_offset, new_offset - offset))
 }
 
 async fn convert_triples(
@@ -518,16 +540,16 @@ async fn copy_unchanged_files(
     Ok(())
 }
 
-async fn copy_indexes(
+async fn copy_naive_unchanged_files(
     from: &directory_10::DirectoryLayerStore,
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     is_child: bool,
 ) -> Result<(), LayerConversionError> {
     let iter = if is_child {
-        CHILD_INDEX_FILES.iter()
+        CHILD_NAIVE_UNCHANGED_FILES.iter()
     } else {
-        BASE_INDEX_FILES.iter()
+        BASE_NAIVE_UNCHANGED_FILES.iter()
     };
     for filename in iter {
         copy_file(from, to, id, filename).await?;
@@ -787,5 +809,85 @@ async fn copy_rollup_file(
         eprintln!("copied rollup file");
     }
 
+    Ok(())
+}
+
+async fn convert_node_value_idmap(
+    from: &directory_10::DirectoryLayerStore,
+    to: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+    offset: u64,
+    num_entries: u64,
+    mapping: &HashMap<u64, u64>,
+) -> io::Result<()> {
+    if storage_10::PersistentLayerStore::file_exists(
+        from,
+        id,
+        consts_11::FILENAMES.node_value_idmap_bits,
+    )
+    .await?
+    {
+        // we have a conversion task to do
+        let bits_file = storage_10::PersistentLayerStore::get_file(
+            from,
+            id,
+            consts_11::FILENAMES.node_value_idmap_bits,
+        )
+        .await?;
+        let blocks_file = storage_10::PersistentLayerStore::get_file(
+            from,
+            id,
+            consts_11::FILENAMES.node_value_idmap_bit_index_blocks,
+        )
+        .await?;
+        let sblocks_file = storage_10::PersistentLayerStore::get_file(
+            from,
+            id,
+            consts_11::FILENAMES.node_value_idmap_bit_index_sblocks,
+        )
+        .await?;
+
+        let bitindex = structure_10::BitIndex::from_maps(
+            storage_10::FileLoad::map(&bits_file).await?,
+            storage_10::FileLoad::map(&blocks_file).await?,
+            storage_10::FileLoad::map(&sblocks_file).await?,
+        );
+        let width = util_10::calculate_width(num_entries);
+        let wtree = structure_10::WaveletTree::from_parts(bitindex, width);
+
+        let iter = wtree.decode().map(|elt| {
+            let num = elt + offset + 1;
+            mapping.get(&num).map(|n| *n - offset - 1).unwrap_or(elt)
+        });
+
+        let output_bits_file = storage_11::PersistentLayerStore::get_file(
+            to,
+            id,
+            consts_11::FILENAMES.node_value_idmap_bits,
+        )
+        .await?;
+        let output_blocks_file = storage_11::PersistentLayerStore::get_file(
+            to,
+            id,
+            consts_11::FILENAMES.node_value_idmap_bit_index_blocks,
+        )
+        .await?;
+        let output_sblocks_file = storage_11::PersistentLayerStore::get_file(
+            to,
+            id,
+            consts_11::FILENAMES.node_value_idmap_bit_index_sblocks,
+        )
+        .await?;
+
+        structure_11::build_wavelet_tree_from_iter(
+            width,
+            iter,
+            output_bits_file,
+            output_blocks_file,
+            output_sblocks_file,
+        )
+        .await?;
+        eprintln!("node value map transformed");
+    }
     Ok(())
 }

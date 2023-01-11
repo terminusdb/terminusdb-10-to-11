@@ -323,20 +323,22 @@ pub const UNCHANGED_FILES: [&'static str; 41] = [
     V10_FILENAMES.neg_predicate_wavelet_tree_bit_index_sblocks,
     V10_FILENAMES.pos_subjects,
     V10_FILENAMES.neg_subjects,
-
     V10_FILENAMES.predicate_idmap_bits,
     V10_FILENAMES.predicate_idmap_bit_index_blocks,
-    V10_FILENAMES.predicate_idmap_bit_index_sblocs,
+    V10_FILENAMES.predicate_idmap_bit_index_sblocks,
 ];
 
-pub const BASE_INDEX_FILES: [&'static str; 5] = [
+pub const BASE_NAIVE_UNCHANGED_FILES: [&'static str; 8] = [
     V10_FILENAMES.pos_objects,
     V10_FILENAMES.base_sp_o_adjacency_list_nums,
     V10_FILENAMES.base_o_ps_adjacency_list_nums,
     V10_FILENAMES.base_o_ps_adjacency_list_bit_index_blocks,
     V10_FILENAMES.base_o_ps_adjacency_list_bit_index_sblocks,
+    V10_FILENAMES.node_value_idmap_bits,
+    V10_FILENAMES.node_value_idmap_bit_index_blocks,
+    V10_FILENAMES.node_value_idmap_bit_index_sblocks,
 ];
-pub const CHILD_INDEX_FILES: [&'static str; 10] = [
+pub const CHILD_NAIVE_UNCHANGED_FILES: [&'static str; 13] = [
     V10_FILENAMES.pos_objects,
     V10_FILENAMES.neg_objects,
     V10_FILENAMES.pos_sp_o_adjacency_list_nums,
@@ -347,4 +349,7 @@ pub const CHILD_INDEX_FILES: [&'static str; 10] = [
     V10_FILENAMES.neg_o_ps_adjacency_list_nums,
     V10_FILENAMES.neg_o_ps_adjacency_list_bit_index_blocks,
     V10_FILENAMES.neg_o_ps_adjacency_list_bit_index_sblocks,
+    V10_FILENAMES.node_value_idmap_bits,
+    V10_FILENAMES.node_value_idmap_bit_index_blocks,
+    V10_FILENAMES.node_value_idmap_bit_index_sblocks,
 ];
