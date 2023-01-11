@@ -168,9 +168,11 @@ pub async fn convert_layer_with_stores(
         })?;
 
     if !naive {
-        write_parent_map(&work, id, map.unwrap(), offset.unwrap()).await.map_err(|e| {
-            LayerConversionError::new(id, InnerLayerConversionError::ParentMapWriteError(e))
-        })?;
+        write_parent_map(&work, id, map.unwrap(), offset.unwrap())
+            .await
+            .map_err(|e| {
+                LayerConversionError::new(id, InnerLayerConversionError::ParentMapWriteError(e))
+            })?;
         eprintln!("written parent map to workdir");
     }
 
@@ -213,13 +215,21 @@ struct ParentMap {
     mapping: Vec<(u64, u64)>,
 }
 
+fn path_for_parent_map(workdir: &str, parent: [u32; 5]) -> PathBuf {
+    let parent_string = name_to_string(parent);
+    let prefix = &parent_string[..3];
+    let mut pathbuf = PathBuf::from(workdir);
+    pathbuf.push(prefix);
+    pathbuf.push(format!("{parent_string}.postcard"));
+
+    pathbuf
+}
+
 async fn get_mapping_and_offset_from_parent(
     workdir: &str,
     parent: [u32; 5],
 ) -> Result<(HashMap<u64, u64>, u64), ParentMapError> {
-    let parent_string = name_to_string(parent);
-    let mut pathbuf = PathBuf::from(workdir);
-    pathbuf.push(format!("{parent_string}.postcard"));
+    let pathbuf = path_for_parent_map(workdir, parent);
     let file = tokio::fs::File::open(pathbuf).await;
     if file.is_err() && file.as_ref().unwrap_err().kind() == io::ErrorKind::NotFound {
         return Err(ParentMapError::new(
@@ -229,7 +239,9 @@ async fn get_mapping_and_offset_from_parent(
     }
     let mut file = file.map_err(|e| ParentMapError::new(parent, e))?;
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).await.map_err(|e|ParentMapError::new(parent, e))?;
+    file.read_to_end(&mut bytes)
+        .await
+        .map_err(|e| ParentMapError::new(parent, e))?;
     let ParentMap {
         offset,
         mapping: mapping_vec,
@@ -694,10 +706,8 @@ async fn write_parent_map(
     mapping: HashMap<u64, u64>,
     offset: u64,
 ) -> io::Result<()> {
-    let id_string = name_to_string(id);
-    let mut pathbuf = PathBuf::from(workdir);
-    tokio::fs::create_dir_all(&pathbuf).await?;
-    pathbuf.push(format!("{id_string}.postcard"));
+    let pathbuf = path_for_parent_map(workdir, id);
+    tokio::fs::create_dir_all(pathbuf.parent().unwrap()).await?;
 
     let mut options = tokio::fs::OpenOptions::new();
     options.create(true).write(true);
