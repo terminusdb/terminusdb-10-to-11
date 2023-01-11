@@ -5,6 +5,7 @@ use terminus_store_11::storage as storage_11;
 use terminus_store_11::storage::archive as archive_11;
 use terminus_store_11::storage::consts as consts_11;
 use terminus_store_11::storage::{name_to_string, string_to_name};
+use tokio::io::AsyncReadExt;
 
 use crate::consts::*;
 use crate::convert_dict::*;
@@ -12,7 +13,6 @@ use crate::convert_triples::*;
 
 use std::collections::HashMap;
 use std::io;
-use std::io::Write;
 use std::path::PathBuf;
 
 use bytes::Bytes;
@@ -168,7 +168,7 @@ pub async fn convert_layer_with_stores(
         })?;
 
     if !naive {
-        write_parent_map(&work, id, map.unwrap(), offset.unwrap()).map_err(|e| {
+        write_parent_map(&work, id, map.unwrap(), offset.unwrap()).await.map_err(|e| {
             LayerConversionError::new(id, InnerLayerConversionError::ParentMapWriteError(e))
         })?;
         eprintln!("written parent map to workdir");
@@ -184,7 +184,7 @@ pub enum InnerParentMapError {
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
-    Deserialization(#[from] serde_json::Error),
+    Deserialization(#[from] postcard::Error),
 }
 
 #[derive(Error, Debug)]
@@ -219,8 +219,8 @@ async fn get_mapping_and_offset_from_parent(
 ) -> Result<(HashMap<u64, u64>, u64), ParentMapError> {
     let parent_string = name_to_string(parent);
     let mut pathbuf = PathBuf::from(workdir);
-    pathbuf.push(format!("{parent_string}.json"));
-    let file = std::fs::File::open(pathbuf);
+    pathbuf.push(format!("{parent_string}.postcard"));
+    let file = tokio::fs::File::open(pathbuf).await;
     if file.is_err() && file.as_ref().unwrap_err().kind() == io::ErrorKind::NotFound {
         return Err(ParentMapError::new(
             parent,
@@ -228,10 +228,12 @@ async fn get_mapping_and_offset_from_parent(
         ));
     }
     let mut file = file.map_err(|e| ParentMapError::new(parent, e))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).await.map_err(|e|ParentMapError::new(parent, e))?;
     let ParentMap {
         offset,
         mapping: mapping_vec,
-    } = serde_json::from_reader(&mut file).map_err(|e| ParentMapError::new(parent, e))?;
+    } = postcard::from_bytes(&bytes).map_err(|e| ParentMapError::new(parent, e))?;
     let mut mapping = HashMap::with_capacity(mapping_vec.len());
     mapping.extend(mapping_vec);
 
@@ -686,7 +688,7 @@ async fn rebuild_indexes(
     Ok(())
 }
 
-fn write_parent_map(
+async fn write_parent_map(
     workdir: &str,
     id: [u32; 5],
     mapping: HashMap<u64, u64>,
@@ -694,13 +696,13 @@ fn write_parent_map(
 ) -> io::Result<()> {
     let id_string = name_to_string(id);
     let mut pathbuf = PathBuf::from(workdir);
-    std::fs::create_dir_all(&pathbuf)?;
-    pathbuf.push(format!("{id_string}.json"));
+    tokio::fs::create_dir_all(&pathbuf).await?;
+    pathbuf.push(format!("{id_string}.postcard"));
 
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = tokio::fs::OpenOptions::new();
     options.create(true).write(true);
 
-    let mut file = options.open(pathbuf)?;
+    let mut file = options.open(pathbuf).await?;
 
     let mut map_vec: Vec<_> = mapping.into_iter().collect();
     map_vec.sort();
@@ -710,8 +712,9 @@ fn write_parent_map(
         offset,
     };
 
-    serde_json::to_writer(&mut file, &parent_map)?;
-    file.flush()
+    let v = postcard::to_allocvec(&parent_map).unwrap();
+    file.write_all(&v).await?;
+    file.flush().await
 }
 
 fn write_bytes_to_file(
