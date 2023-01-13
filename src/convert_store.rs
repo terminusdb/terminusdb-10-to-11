@@ -92,12 +92,14 @@ pub async fn convert_store(
         }
     }
 
-    if failures.is_empty() {
-        convert_labels(from, to).await?;
-        Ok(())
-    } else {
-        Err(StoreConversionError::LayerConversionsFailed(failures))
+    if !failures.is_empty() {
+        return Err(StoreConversionError::LayerConversionsFailed(failures));
     }
+    convert_labels(from, to).await?;
+
+    write_version_file(to).await?;
+    println!("version file written");
+    Ok(())
 }
 
 pub enum ConversionStatus {
@@ -233,4 +235,17 @@ pub async fn layer_cleanup(to: &str, layer: [u32; 5]) -> Result<(), io::Error> {
         }
     }
     Ok(())
+}
+
+pub async fn write_version_file(to: &str) -> Result<(), io::Error> {
+    let mut options = OpenOptions::new();
+    options.create(true);
+    options.write(true);
+
+    let mut path = PathBuf::from(to);
+    path.push("STORAGE_VERSION");
+    eprintln!("about to open {path:?}");
+    let mut file = options.open(path).await?;
+    file.write_all(b"2").await?;
+    file.flush().await
 }
