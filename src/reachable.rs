@@ -75,6 +75,7 @@ pub async fn find_reachable_layers(
             final_list.push((None, layer));
         }
 
+        /*
         // we musn't forget about the rollup
         if storage_10::PersistentLayerStore::layer_has_rollup(layer_store, layer).await? {
             let rollup =
@@ -83,6 +84,7 @@ pub async fn find_reachable_layers(
                 layers.push(rollup);
             }
         }
+        */
     }
 
     final_list.sort();
@@ -92,7 +94,12 @@ pub async fn find_reachable_layers(
         .group_by(|(parent, _)| parent.clone());
     let final_map: HashMap<Option<[u32; 5]>, Vec<[u32; 5]>> = group_iter
         .into_iter()
-        .map(|(k, g)| (k, g.map(|(_, v)| v).collect()))
+        .map(|(k, g)| {
+            let mut children: Vec<_> = g.map(|(_, v)| v).collect();
+            children.sort();
+            children.dedup();
+            (k, children)
+        })
         .collect();
 
     Ok(final_map)

@@ -5,6 +5,7 @@ use terminus_store_11::storage as storage_11;
 use terminus_store_11::storage::archive as archive_11;
 use terminus_store_11::storage::consts as consts_11;
 use terminus_store_11::storage::{name_to_string, string_to_name};
+use tokio::io::AsyncReadExt;
 
 use crate::consts::*;
 use crate::convert_dict::*;
@@ -12,12 +13,15 @@ use crate::convert_triples::*;
 
 use std::collections::HashMap;
 use std::io;
-use std::io::Write;
 use std::path::PathBuf;
 
 use bytes::Bytes;
 
 use serde::{Deserialize, Serialize};
+
+use tokio::io::AsyncWriteExt;
+
+use thiserror::Error;
 
 pub async fn convert_layer(
     from: &str,
@@ -25,12 +29,64 @@ pub async fn convert_layer(
     work: &str,
     naive: bool,
     id_string: &str,
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     let v10_store = directory_10::DirectoryLayerStore::new(from);
     let v11_store = archive_11::ArchiveLayerStore::new(to);
     let id = string_to_name(id_string).unwrap();
 
     convert_layer_with_stores(&v10_store, &v11_store, work, naive, id).await
+}
+
+#[derive(Debug, Error)]
+pub enum InnerLayerConversionError {
+    #[error(transparent)]
+    DictionaryConversion(#[from] DictionaryConversionError),
+    #[error("layer was already converted")]
+    LayerAlreadyConverted,
+
+    #[error("failed to copy {name}: {source}")]
+    FileCopyError { name: String, source: io::Error },
+
+    #[error(transparent)]
+    ParentMapError(#[from] ParentMapError),
+
+    #[error("failed to convert triple map: {0}")]
+    TripleConversionError(io::Error),
+
+    #[error("failed to rebuild indexes: {0}")]
+    RebuildIndexError(io::Error),
+
+    #[error("failed to finalize layer: {0}")]
+    FinalizationError(io::Error),
+
+    #[allow(unused)]
+    #[error("failed to copy rollup file: {0}")]
+    RollupFileCopyError(io::Error),
+
+    #[error("failed to write the parent map: {0}")]
+    ParentMapWriteError(io::Error),
+
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    #[error("a nodevalue remap file exists but was not expected")]
+    NodeValueRemapExists,
+}
+
+#[derive(Debug, Error)]
+#[error("Failed to convert layer {}: {source}", name_to_string(self.layer))]
+pub struct LayerConversionError {
+    layer: [u32; 5],
+    source: InnerLayerConversionError,
+}
+
+impl LayerConversionError {
+    fn new<E: Into<InnerLayerConversionError>>(layer: [u32; 5], source: E) -> Self {
+        Self {
+            layer,
+            source: source.into(),
+        }
+    }
 }
 
 pub async fn convert_layer_with_stores(
@@ -39,61 +95,128 @@ pub async fn convert_layer_with_stores(
     work: &str,
     naive: bool,
     id: [u32; 5],
-) -> io::Result<()> {
-    let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id).await?;
+) -> Result<(), LayerConversionError> {
+    eprintln!("converting layer {}", name_to_string(id));
+    let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
 
-    if storage_11::PersistentLayerStore::directory_exists(v11_store, id).await? {
-        panic!(
-            "layer appears to already have been converted: {}",
-            name_to_string(id)
-        );
+    if storage_11::PersistentLayerStore::directory_exists(v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?
+    {
+        return Err(LayerConversionError::new(
+            id,
+            InnerLayerConversionError::LayerAlreadyConverted,
+        ));
     }
 
     eprintln!("initial setup done");
 
-    storage_11::PersistentLayerStore::create_named_directory(v11_store, id).await?;
+    storage_11::PersistentLayerStore::create_named_directory(v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
+
+    assert_no_remap_exists(v10_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
 
     let map;
     let offset;
     if naive {
-        naive_convert_dictionaries(v10_store, v11_store, id).await?;
+        naive_convert_dictionaries(v10_store, v11_store, id)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("dictionaries converted");
         copy_unchanged_files(v10_store, v11_store, id).await?;
         copy_indexes(v10_store, v11_store, id, is_child).await?;
-        eprintln!("files copied");
         map = None;
         offset = None;
     } else {
-        let (mut mapping, offset_1) = get_mapping_and_offset(work, v10_store, id).await?;
+        let (mut mapping, offset_1) = get_mapping_and_offset(work, v10_store, id)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         eprintln!("parent mappings retrieved");
-        let (mapping_addition, offset_1) =
-            convert_dictionaries(v10_store, v11_store, id, offset_1).await?;
+        let (mapping_addition, offset_1) = convert_dictionaries(v10_store, v11_store, id, offset_1)
+            .await
+            .map_err(|e| LayerConversionError::new(id, e))?;
         mapping.extend(mapping_addition);
         eprintln!("dictionaries converted");
-        convert_triples(v10_store, v11_store, id, is_child, &mapping).await?;
+        convert_triples(v10_store, v11_store, id, is_child, &mapping)
+            .await
+            .map_err(|e| {
+                LayerConversionError::new(id, InnerLayerConversionError::TripleConversionError(e))
+            })?;
         eprintln!("triples converted");
         copy_unchanged_files(v10_store, v11_store, id).await?;
         eprintln!("files copied");
-        rebuild_indexes(v11_store, id, is_child).await?;
+        rebuild_indexes(v11_store, id, is_child)
+            .await
+            .map_err(|e| {
+                LayerConversionError::new(id, InnerLayerConversionError::RebuildIndexError(e))
+            })?;
         eprintln!("indexes rebuilt");
         map = Some(mapping);
         offset = Some(offset_1);
     }
 
-    storage_11::PersistentLayerStore::finalize(v11_store, id).await?;
+    storage_11::PersistentLayerStore::finalize(v11_store, id)
+        .await
+        .map_err(|e| {
+            LayerConversionError::new(id, InnerLayerConversionError::FinalizationError(e))
+        })?;
     eprintln!("finalized!");
 
+    /*
     // we copy the rollup only after finalizing, as rollups are not
     // part of a layer under construction
-    copy_file(v10_store, v11_store, id, V10_FILENAMES.rollup).await?;
-    eprintln!("copied rollup file (if exists)");
+    copy_rollup_file(v10_store, v11_store, id)
+        .await
+        .map_err(|e| {
+            LayerConversionError::new(id, InnerLayerConversionError::RollupFileCopyError(e))
+        })?;
+    */
 
     if !naive {
-        write_parent_map(&work, id, map.unwrap(), offset.unwrap())?;
+        write_parent_map(&work, id, map.unwrap(), offset.unwrap())
+            .await
+            .map_err(|e| {
+                LayerConversionError::new(id, InnerLayerConversionError::ParentMapWriteError(e))
+            })?;
         eprintln!("written parent map to workdir");
     }
 
     Ok(())
+}
+
+#[derive(Error, Debug)]
+pub enum InnerParentMapError {
+    #[error("not found")]
+    ParentMapNotFound,
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Deserialization(#[from] postcard::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ParentMapError {
+    #[error(transparent)]
+    Io(io::Error),
+    #[error("couldn't load parent map {}: {source}", name_to_string(*parent))]
+    Other {
+        parent: [u32; 5],
+        source: InnerParentMapError,
+    },
+}
+
+impl ParentMapError {
+    fn new<E: Into<InnerParentMapError>>(parent: [u32; 5], source: E) -> Self {
+        Self::Other {
+            parent,
+            source: source.into(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -102,30 +225,54 @@ struct ParentMap {
     mapping: Vec<(u64, u64)>,
 }
 
+fn path_for_parent_map(workdir: &str, parent: [u32; 5]) -> PathBuf {
+    let parent_string = name_to_string(parent);
+    let prefix = &parent_string[..3];
+    let mut pathbuf = PathBuf::from(workdir);
+    pathbuf.push(prefix);
+    pathbuf.push(format!("{parent_string}.postcard"));
+
+    pathbuf
+}
+
+async fn get_mapping_and_offset_from_parent(
+    workdir: &str,
+    parent: [u32; 5],
+) -> Result<(HashMap<u64, u64>, u64), ParentMapError> {
+    let pathbuf = path_for_parent_map(workdir, parent);
+    let file = tokio::fs::File::open(pathbuf).await;
+    if file.is_err() && file.as_ref().unwrap_err().kind() == io::ErrorKind::NotFound {
+        return Err(ParentMapError::new(
+            parent,
+            InnerParentMapError::ParentMapNotFound,
+        ));
+    }
+    let mut file = file.map_err(|e| ParentMapError::new(parent, e))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .await
+        .map_err(|e| ParentMapError::new(parent, e))?;
+    let ParentMap {
+        offset,
+        mapping: mapping_vec,
+    } = postcard::from_bytes(&bytes).map_err(|e| ParentMapError::new(parent, e))?;
+    let mut mapping = HashMap::with_capacity(mapping_vec.len());
+    mapping.extend(mapping_vec);
+
+    Ok((mapping, offset))
+}
+
 async fn get_mapping_and_offset(
     workdir: &str,
     store: &directory_10::DirectoryLayerStore,
     id: [u32; 5],
-) -> io::Result<(HashMap<u64, u64>, u64)> {
+) -> Result<(HashMap<u64, u64>, u64), ParentMapError> {
     // look up parent id if applicable
-    if let Some(parent) = storage_10::LayerStore::get_layer_parent_name(store, id).await? {
-        let parent_string = name_to_string(parent);
-        let mut pathbuf = PathBuf::from(workdir);
-        pathbuf.push(format!("{parent_string}.json"));
-        let file = std::fs::File::open(pathbuf);
-        if file.is_err() && file.as_ref().unwrap_err().kind() == io::ErrorKind::NotFound {
-            let id_string = name_to_string(id);
-            panic!("couldn't find parent map for {parent_string} while converting {id_string}");
-        }
-        let mut file = file?;
-        let ParentMap {
-            offset,
-            mapping: mapping_vec,
-        } = serde_json::from_reader(&mut file)?;
-        let mut mapping = HashMap::with_capacity(mapping_vec.len());
-        mapping.extend(mapping_vec);
-
-        Ok((mapping, offset))
+    if let Some(parent) = storage_10::LayerStore::get_layer_parent_name(store, id)
+        .await
+        .map_err(|e| ParentMapError::Io(e))?
+    {
+        get_mapping_and_offset_from_parent(workdir, parent).await
     } else {
         Ok((HashMap::with_capacity(0), 0))
     }
@@ -216,7 +363,7 @@ async fn convert_dictionaries(
     v11_store: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     offset: u64,
-) -> io::Result<(HashMap<u64, u64>, u64)> {
+) -> Result<(HashMap<u64, u64>, u64), DictionaryConversionError> {
     let node_dict_pfc = storage_10::PersistentLayerStore::get_file(
         v10_store,
         id,
@@ -373,7 +520,7 @@ async fn copy_unchanged_files(
     from: &directory_10::DirectoryLayerStore,
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     for filename in UNCHANGED_FILES.iter() {
         copy_file(from, to, id, filename).await?;
     }
@@ -386,7 +533,7 @@ async fn copy_indexes(
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     is_child: bool,
-) -> io::Result<()> {
+) -> Result<(), LayerConversionError> {
     let iter = if is_child {
         CHILD_INDEX_FILES.iter()
     } else {
@@ -563,21 +710,19 @@ async fn rebuild_indexes(
     Ok(())
 }
 
-fn write_parent_map(
+async fn write_parent_map(
     workdir: &str,
     id: [u32; 5],
     mapping: HashMap<u64, u64>,
     offset: u64,
 ) -> io::Result<()> {
-    let id_string = name_to_string(id);
-    let mut pathbuf = PathBuf::from(workdir);
-    std::fs::create_dir_all(&pathbuf)?;
-    pathbuf.push(format!("{id_string}.json"));
+    let pathbuf = path_for_parent_map(workdir, id);
+    tokio::fs::create_dir_all(pathbuf.parent().unwrap()).await?;
 
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = tokio::fs::OpenOptions::new();
     options.create(true).write(true);
 
-    let mut file = options.open(pathbuf)?;
+    let mut file = options.open(pathbuf).await?;
 
     let mut map_vec: Vec<_> = mapping.into_iter().collect();
     map_vec.sort();
@@ -587,8 +732,9 @@ fn write_parent_map(
         offset,
     };
 
-    serde_json::to_writer(&mut file, &parent_map)?;
-    file.flush()
+    let v = postcard::to_allocvec(&parent_map).unwrap();
+    file.write_all(&v).await?;
+    file.flush().await
 }
 
 fn write_bytes_to_file(
@@ -606,6 +752,22 @@ async fn copy_file(
     to: &archive_11::ArchiveLayerStore,
     id: [u32; 5],
     file: &str,
+) -> Result<(), LayerConversionError> {
+    inner_copy_file(from, to, id, file).await.map_err(|e| {
+        LayerConversionError::new(
+            id,
+            InnerLayerConversionError::FileCopyError {
+                name: file.to_string(),
+                source: e,
+            },
+        )
+    })
+}
+async fn inner_copy_file(
+    from: &directory_10::DirectoryLayerStore,
+    to: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+    file: &str,
 ) -> io::Result<()> {
     // this assumes that the file name is the same in from and to,
     // which should be correct for everythning that is not a
@@ -617,4 +779,41 @@ async fn copy_file(
     }
 
     Ok(())
+}
+
+#[allow(unused)]
+async fn copy_rollup_file(
+    from: &directory_10::DirectoryLayerStore,
+    to: &archive_11::ArchiveLayerStore,
+    id: [u32; 5],
+) -> io::Result<()> {
+    let input = storage_10::PersistentLayerStore::get_file(from, id, V10_FILENAMES.rollup).await?;
+    if let Some(map) = storage_10::FileLoad::map_if_exists(&input).await? {
+        let output =
+            storage_11::PersistentLayerStore::get_file(to, id, V11_FILENAMES.rollup).await?;
+        let mut output_writer = storage_11::FileStore::open_write(&output).await?;
+        output_writer.write_all(&map).await?;
+        output_writer.flush().await?;
+        storage_11::SyncableFile::sync_all(output_writer).await?;
+        eprintln!("copied rollup file");
+    }
+
+    Ok(())
+}
+
+async fn assert_no_remap_exists(
+    store: &directory_10::DirectoryLayerStore,
+    id: [u32; 5],
+) -> Result<(), InnerLayerConversionError> {
+    if storage_10::PersistentLayerStore::file_exists(
+        store,
+        id,
+        V10_FILENAMES.node_value_idmap_bit_index_blocks,
+    )
+    .await?
+    {
+        Err(InnerLayerConversionError::NodeValueRemapExists)
+    } else {
+        Ok(())
+    }
 }
