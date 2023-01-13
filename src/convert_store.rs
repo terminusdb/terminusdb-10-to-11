@@ -244,7 +244,6 @@ pub async fn write_version_file(to: &str) -> Result<(), io::Error> {
 
     let mut path = PathBuf::from(to);
     path.push("STORAGE_VERSION");
-    eprintln!("about to open {path:?}");
     let mut file = options.open(path).await?;
     file.write_all(b"2").await?;
     file.flush().await

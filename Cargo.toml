@@ -10,7 +10,7 @@ description = "Converts a terminusdb v10 store to a v11 store"
 [dependencies]
 #terminus-store_10 = {package = "terminus-store", path="../terminusdb-store-10"}
 terminus-store_10 = {package = "terminus-store", version = "0.19.11"}
-terminus-store_11 = {package = "terminus-store", path="../terminusdb-store"}
+terminus-store_11 = {package = "terminus-store", version="0.20.0-rc1"}
 clap = {version="4.0", features=["derive"]}
 fs2 = "0.4.3"
 futures = "0.3"
