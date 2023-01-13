@@ -59,6 +59,7 @@ pub enum InnerLayerConversionError {
     #[error("failed to finalize layer: {0}")]
     FinalizationError(io::Error),
 
+    #[allow(unused)]
     #[error("failed to copy rollup file: {0}")]
     RollupFileCopyError(io::Error),
 
@@ -67,6 +68,9 @@ pub enum InnerLayerConversionError {
 
     #[error(transparent)]
     Io(#[from] io::Error),
+
+    #[error("a nodevalue remap file exists but was not expected")]
+    NodeValueRemapExists,
 }
 
 #[derive(Debug, Error)]
@@ -110,6 +114,10 @@ pub async fn convert_layer_with_stores(
     eprintln!("initial setup done");
 
     storage_11::PersistentLayerStore::create_named_directory(v11_store, id)
+        .await
+        .map_err(|e| LayerConversionError::new(id, e))?;
+
+    assert_no_remap_exists(v10_store, id)
         .await
         .map_err(|e| LayerConversionError::new(id, e))?;
 
@@ -159,6 +167,7 @@ pub async fn convert_layer_with_stores(
         })?;
     eprintln!("finalized!");
 
+    /*
     // we copy the rollup only after finalizing, as rollups are not
     // part of a layer under construction
     copy_rollup_file(v10_store, v11_store, id)
@@ -166,6 +175,7 @@ pub async fn convert_layer_with_stores(
         .map_err(|e| {
             LayerConversionError::new(id, InnerLayerConversionError::RollupFileCopyError(e))
         })?;
+    */
 
     if !naive {
         write_parent_map(&work, id, map.unwrap(), offset.unwrap())
@@ -771,6 +781,7 @@ async fn inner_copy_file(
     Ok(())
 }
 
+#[allow(unused)]
 async fn copy_rollup_file(
     from: &directory_10::DirectoryLayerStore,
     to: &archive_11::ArchiveLayerStore,
@@ -788,4 +799,21 @@ async fn copy_rollup_file(
     }
 
     Ok(())
+}
+
+async fn assert_no_remap_exists(
+    store: &directory_10::DirectoryLayerStore,
+    id: [u32; 5],
+) -> Result<(), InnerLayerConversionError> {
+    if storage_10::PersistentLayerStore::file_exists(
+        store,
+        id,
+        V10_FILENAMES.node_value_idmap_bit_index_blocks,
+    )
+    .await?
+    {
+        Err(InnerLayerConversionError::NodeValueRemapExists)
+    } else {
+        Ok(())
+    }
 }

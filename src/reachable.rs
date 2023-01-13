@@ -75,6 +75,7 @@ pub async fn find_reachable_layers(
             final_list.push((None, layer));
         }
 
+        /*
         // we musn't forget about the rollup
         if storage_10::PersistentLayerStore::layer_has_rollup(layer_store, layer).await? {
             let rollup =
@@ -83,6 +84,7 @@ pub async fn find_reachable_layers(
                 layers.push(rollup);
             }
         }
+        */
     }
 
     final_list.sort();
