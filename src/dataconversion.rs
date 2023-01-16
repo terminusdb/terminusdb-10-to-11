@@ -546,12 +546,10 @@ pub fn normalize_decimal(s: &str) -> std::result::Result<Cow<str>, DecimalValida
             Regex::new(r"^(-?)(\d+)(\.(\d+)?)[Ee]([+-]\d+)$").unwrap();
     }
     if NORMALIZED_RE.is_match(s) {
-        eprintln!("already normalized: {s}");
         Ok(Cow::Borrowed(s))
     } else if let Some(cap) = SCIENTIFIC_RE.captures(s) {
         let prefix = &cap[2];
         let suffix = &cap[4];
-        eprintln!("{}", &cap[5]);
         let exp = cap[5].parse::<i64>().unwrap();
         let new_decimal = if exp < 0 {
             let padding = "0".repeat(-exp as usize - 1);
