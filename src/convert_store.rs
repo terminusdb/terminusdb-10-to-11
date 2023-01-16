@@ -65,6 +65,12 @@ pub async fn convert_store(
         match status {
             Some(ConversionStatus::Completed) => {
                 println!("skipping: {}", name_to_string(layer));
+                // even though we skip this layer, its children still
+                // might need to be converted, so here they are added
+                // to the visit queue.
+                if let Some(children) = reachable.get(&Some(layer)) {
+                    visit_queue.extend(children.clone());
+                }
                 continue;
             }
             Some(_) => layer_cleanup(to, layer).await?,
