@@ -503,7 +503,7 @@ fn parse_duration(s: &str) -> Result<Duration> {
             .map_err(|_| error_mapping())?
     };
     let (hour, minute, second) = if cap[8].is_empty() {
-        (0, 0, 0)
+        (0, 0, 0.0)
     } else {
         let hour = if cap[9].is_empty() {
             0
@@ -520,10 +520,10 @@ fn parse_duration(s: &str) -> Result<Duration> {
                 .map_err(|_| error_mapping())?
         };
         let second = if cap[13].is_empty() {
-            0
+            0.0
         } else {
             cap[13][0..cap[13].len() - 1]
-                .parse::<u8>()
+                .parse::<f64>()
                 .map_err(|_| error_mapping())?
         };
         (hour, minute, second)

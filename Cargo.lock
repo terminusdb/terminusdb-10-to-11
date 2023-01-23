@@ -1052,9 +1052,9 @@ dependencies = [
 
 [[package]]
 name = "terminus-store"
-version = "0.20.0-rc1"
+version = "0.20.0-rc4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25e7ec2d7cb65f6a8b27268a88a0de3c892463c506c591000c5e0b0fcc5a69f9"
+checksum = "dfc855b1e539232f3fc575a853edd7e582ad74f9df7ce90fc7fd35df07786043"
 dependencies = [
  "async-trait",
  "base64",
@@ -1099,7 +1099,7 @@ dependencies = [
  "rug",
  "serde",
  "terminus-store 0.19.11",
- "terminus-store 0.20.0-rc1",
+ "terminus-store 0.20.0-rc4",
  "thiserror",
  "tokio",
  "tokio-util",
