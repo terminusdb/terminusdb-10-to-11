@@ -98,7 +98,7 @@ pub async fn convert_store(
         }
     }
 
-    if !failures.is_empty() {
+    if !failures.is_empty() && !keep_going {
         return Err(StoreConversionError::LayerConversionsFailed(failures));
     }
     convert_labels(from, to).await?;
