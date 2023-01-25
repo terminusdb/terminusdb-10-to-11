@@ -18,9 +18,7 @@ pub struct UntypedDictionaryOutput {
 pub async fn convert_untyped_dictionary<F: storage_10::FileLoad + 'static>(
     from: F,
 ) -> io::Result<UntypedDictionaryOutput> {
-    eprintln!("time to convert untyped dict");
     let mut stream = pfc_10::dict_file_to_indexed_stream(from, 0).await?;
-    eprintln!("opened stream");
 
     let mut builder = tfc_11::StringDictBufBuilder::new(BytesMut::new(), BytesMut::new());
     while let Some((_ix, val)) = stream.try_next().await? {
