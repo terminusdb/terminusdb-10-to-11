@@ -2,6 +2,7 @@
 name = "terminusdb-10-to-11"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 authors = ["Gavin Mendel-Gleasson <gavin@terminusdb.com>", "Matthijs van Otterdijk <matthijs@terminusdb.com>"]
 description = "Converts a terminusdb v10 store to a v11 store"
 
