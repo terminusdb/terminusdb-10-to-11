@@ -1,6 +1,6 @@
 [package]
 name = "terminusdb-10-to-11"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Gavin Mendel-Gleason <gavin@terminusdb.com>", "Matthijs van Otterdijk <matthijs@terminusdb.com>", "Robin de Rooij <robin@terminusdb.com>"]
@@ -10,9 +10,8 @@ repository = "https://github.com/terminusdb/terminusdb-10-to-11"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#terminus-store_10 = {package = "terminus-store", path="../terminusdb-store-10"}
 terminus-store_10 = {package = "terminus-store", version = "0.19.11"}
-terminus-store_11 = {package = "terminus-store", version="0.20.0-rc4"}
+terminus-store_11 = {package = "terminus-store", version="0.20.0"}
 clap = {version="4.0", features=["derive"]}
 fs2 = "0.4.3"
 futures = "0.3"
