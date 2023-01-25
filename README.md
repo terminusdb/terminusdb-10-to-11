@@ -31,7 +31,7 @@ Options:
 
 ## Basic use
 ### For TerminusDB users
-TerminusDB by default stores the database under storage/db in your terminusdb install path. For example, if your terminusdb is installed under `/home/joan/terminusdb`, the database directory will be at `/home/joan/terminusdb/storage/db`.
+TerminusDB by default stores the database under `storage/db` in your terminusdb install path. For example, if your terminusdb is installed under `/home/joan/terminusdb`, the database directory will be at `/home/joan/terminusdb/storage/db`.
 
 A simple invocation that should allow an in place conversion with a
 backup is as follows:
@@ -49,7 +49,7 @@ $ terminusdb10-to-11 convert-store -krv /home/joan/terminusdb/storage/db /home/j
 After performing this conversion, you can no longer use the store with the old TerminusDB 10. Your old store will however have been copied to a backup folder, which the command output tells you the location of. Should you need to downgrade, you can simply move this backup folder back to the original location.
 
 ### For other store users
-By default, this conversion tool assumes it is running against a TerminusDB store. This means that it expects all values in the various layers to be annotated with TerminusDB types. If you are using terminus-store in another project, this will probably not be the case for you.
+By default, this conversion tool assumes it is running against a TerminusDB store. This means that it expects all values in the various layers to be annotated with TerminusDB types. If you are using terminus-store in another project, this will probably not be the case for you, causing the conversion to fail.
 
 If this is the case, you should use the `--naive` flag. This will convert the store assuming that all values are strings. Do NOT use this flag on stores used by TerminusDB though, as this will render the destination store unusable.
 
