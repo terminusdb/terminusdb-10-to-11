@@ -1,12 +1,10 @@
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::{Bytes, BytesMut};
 use futures::stream::TryStreamExt;
 use std::collections::HashMap;
 use std::io;
-use terminus_store_10::storage::{self as storage_10, directory as directory_10};
+use terminus_store_10::storage as storage_10;
 use terminus_store_10::structure::pfc as pfc_10;
 use terminus_store_11::structure::tfc as tfc_11;
-use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
 
 use thiserror::*;
 
@@ -15,37 +13,6 @@ use crate::dataconversion::{convert_value_string_to_dict_entry, DataConversionEr
 pub struct UntypedDictionaryOutput {
     pub offsets: Bytes,
     pub data: Bytes,
-}
-
-pub async fn convert_untyped_dictionary_to_files(
-    from: &str,
-    to_offsets: &str,
-    to_data: &str,
-) -> io::Result<()> {
-    let UntypedDictionaryOutput {
-        mut offsets,
-        mut data,
-    } = convert_untyped_dictionary(directory_10::FileBackedStore::new(from)).await?;
-
-    let mut options = OpenOptions::new();
-    options.create_new(true);
-    options.write(true);
-
-    let mut to_offsets_file = options.open(to_offsets).await?;
-    let mut to_data_file = options.open(to_data).await?;
-
-    while offsets.has_remaining() {
-        to_offsets_file.write_buf(&mut offsets).await?;
-    }
-
-    while data.has_remaining() {
-        to_data_file.write_buf(&mut data).await?;
-    }
-
-    to_offsets_file.flush().await?;
-    to_data_file.flush().await?;
-
-    Ok(())
 }
 
 pub async fn convert_untyped_dictionary<F: storage_10::FileLoad + 'static>(

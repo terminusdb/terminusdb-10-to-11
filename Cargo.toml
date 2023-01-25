@@ -1,16 +1,18 @@
 [package]
 name = "terminusdb-10-to-11"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-authors = ["Gavin Mendel-Gleasson <gavin@terminusdb.com>", "Matthijs van Otterdijk <matthijs@terminusdb.com>"]
+license = "Apache-2.0"
+authors = ["Gavin Mendel-Gleason <gavin@terminusdb.com>", "Matthijs van Otterdijk <matthijs@terminusdb.com>", "Robin de Rooij <robin@terminusdb.com>"]
 description = "Converts a terminusdb v10 store to a v11 store"
+repository = "https://github.com/terminusdb/terminusdb-10-to-11"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 #terminus-store_10 = {package = "terminus-store", path="../terminusdb-store-10"}
 terminus-store_10 = {package = "terminus-store", version = "0.19.11"}
-terminus-store_11 = {package = "terminus-store", version="0.20.0-rc1"}
+terminus-store_11 = {package = "terminus-store", version="0.20.0-rc4"}
 clap = {version="4.0", features=["derive"]}
 fs2 = "0.4.3"
 futures = "0.3"
@@ -26,3 +28,5 @@ hex = "0.4"
 serde = {version="1.0", features=["derive"]}
 regex = "1.7"
 lazy_static = "1.4"
+thiserror = "1.0"
+postcard = {version="1.0", features=["alloc"]}

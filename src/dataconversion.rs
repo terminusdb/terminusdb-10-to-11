@@ -503,7 +503,7 @@ fn parse_duration(s: &str) -> Result<Duration> {
             .map_err(|_| error_mapping())?
     };
     let (hour, minute, second) = if cap[8].is_empty() {
-        (0, 0, 0)
+        (0, 0, 0.0)
     } else {
         let hour = if cap[9].is_empty() {
             0
@@ -520,10 +520,10 @@ fn parse_duration(s: &str) -> Result<Duration> {
                 .map_err(|_| error_mapping())?
         };
         let second = if cap[13].is_empty() {
-            0
+            0.0
         } else {
             cap[13][0..cap[13].len() - 1]
-                .parse::<u8>()
+                .parse::<f64>()
                 .map_err(|_| error_mapping())?
         };
         (hour, minute, second)
@@ -546,12 +546,10 @@ pub fn normalize_decimal(s: &str) -> std::result::Result<Cow<str>, DecimalValida
             Regex::new(r"^(-?)(\d+)(\.(\d+)?)[Ee]([+-]\d+)$").unwrap();
     }
     if NORMALIZED_RE.is_match(s) {
-        eprintln!("already normalized: {s}");
         Ok(Cow::Borrowed(s))
     } else if let Some(cap) = SCIENTIFIC_RE.captures(s) {
         let prefix = &cap[2];
         let suffix = &cap[4];
-        eprintln!("{}", &cap[5]);
         let exp = cap[5].parse::<i64>().unwrap();
         let new_decimal = if exp < 0 {
             let padding = "0".repeat(-exp as usize - 1);

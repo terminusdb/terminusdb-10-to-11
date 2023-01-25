@@ -28,13 +28,14 @@ pub async fn convert_layer(
     to: &str,
     work: &str,
     naive: bool,
+    verbose: bool,
     id_string: &str,
 ) -> Result<(), LayerConversionError> {
     let v10_store = directory_10::DirectoryLayerStore::new(from);
     let v11_store = archive_11::ArchiveLayerStore::new(to);
     let id = string_to_name(id_string).unwrap();
 
-    convert_layer_with_stores(&v10_store, &v11_store, work, naive, id).await
+    convert_layer_with_stores(&v10_store, &v11_store, work, naive, verbose, id).await
 }
 
 #[derive(Debug, Error)]
@@ -94,9 +95,10 @@ pub async fn convert_layer_with_stores(
     v11_store: &archive_11::ArchiveLayerStore,
     work: &str,
     naive: bool,
+    verbose: bool,
     id: [u32; 5],
 ) -> Result<(), LayerConversionError> {
-    eprintln!("converting layer {}", name_to_string(id));
+    println!("converting layer {}", name_to_string(id));
     let is_child = storage_10::PersistentLayerStore::layer_has_parent(v10_store, id)
         .await
         .map_err(|e| LayerConversionError::new(id, e))?;
@@ -110,8 +112,6 @@ pub async fn convert_layer_with_stores(
             InnerLayerConversionError::LayerAlreadyConverted,
         ));
     }
-
-    eprintln!("initial setup done");
 
     storage_11::PersistentLayerStore::create_named_directory(v11_store, id)
         .await
@@ -127,7 +127,9 @@ pub async fn convert_layer_with_stores(
         naive_convert_dictionaries(v10_store, v11_store, id)
             .await
             .map_err(|e| LayerConversionError::new(id, e))?;
-        eprintln!("dictionaries converted");
+        if verbose {
+            println!("dictionaries converted");
+        }
         copy_unchanged_files(v10_store, v11_store, id).await?;
         copy_indexes(v10_store, v11_store, id, is_child).await?;
         map = None;
@@ -136,26 +138,36 @@ pub async fn convert_layer_with_stores(
         let (mut mapping, offset_1) = get_mapping_and_offset(work, v10_store, id)
             .await
             .map_err(|e| LayerConversionError::new(id, e))?;
-        eprintln!("parent mappings retrieved");
+        if verbose {
+            println!("parent mappings retrieved");
+        }
         let (mapping_addition, offset_1) = convert_dictionaries(v10_store, v11_store, id, offset_1)
             .await
             .map_err(|e| LayerConversionError::new(id, e))?;
         mapping.extend(mapping_addition);
-        eprintln!("dictionaries converted");
+        if verbose {
+            println!("dictionaries converted");
+        }
         convert_triples(v10_store, v11_store, id, is_child, &mapping)
             .await
             .map_err(|e| {
                 LayerConversionError::new(id, InnerLayerConversionError::TripleConversionError(e))
             })?;
-        eprintln!("triples converted");
+        if verbose {
+            println!("triples converted");
+        }
         copy_unchanged_files(v10_store, v11_store, id).await?;
-        eprintln!("files copied");
+        if verbose {
+            println!("files copied");
+        }
         rebuild_indexes(v11_store, id, is_child)
             .await
             .map_err(|e| {
                 LayerConversionError::new(id, InnerLayerConversionError::RebuildIndexError(e))
             })?;
-        eprintln!("indexes rebuilt");
+        if verbose {
+            println!("indexes rebuilt");
+        }
         map = Some(mapping);
         offset = Some(offset_1);
     }
@@ -165,7 +177,6 @@ pub async fn convert_layer_with_stores(
         .map_err(|e| {
             LayerConversionError::new(id, InnerLayerConversionError::FinalizationError(e))
         })?;
-    eprintln!("finalized!");
 
     /*
     // we copy the rollup only after finalizing, as rollups are not
@@ -183,7 +194,9 @@ pub async fn convert_layer_with_stores(
             .map_err(|e| {
                 LayerConversionError::new(id, InnerLayerConversionError::ParentMapWriteError(e))
             })?;
-        eprintln!("written parent map to workdir");
+        if verbose {
+            println!("written parent map to workdir");
+        }
     }
 
     Ok(())
@@ -795,7 +808,7 @@ async fn copy_rollup_file(
         output_writer.write_all(&map).await?;
         output_writer.flush().await?;
         storage_11::SyncableFile::sync_all(output_writer).await?;
-        eprintln!("copied rollup file");
+        println!("copied rollup file");
     }
 
     Ok(())
