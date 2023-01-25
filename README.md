@@ -49,9 +49,9 @@ $ terminusdb10-to-11 convert-store -krv /home/joan/terminusdb/storage/db /home/j
 After performing this conversion, you can no longer use the store with the old TerminusDB 10. Your old store will however have been copied to a backup folder, which the command output tells you the location of. Should you need to downgrade, you can simply move this backup folder back to the original location.
 
 ### For other store users
-This conversion tool assumes it is running against a TerminusDB store. This means that it expects all values in the various layers to be annotated with TerminusDB types. If you are using terminus-store in another project, this will probably not be the case for you.
+By default, this conversion tool assumes it is running against a TerminusDB store. This means that it expects all values in the various layers to be annotated with TerminusDB types. If you are using terminus-store in another project, this will probably not be the case for you.
 
-If this is the case, you should use the `--naive` flag. This will convert the store assuming that all values are strings.
+If this is the case, you should use the `--naive` flag. This will convert the store assuming that all values are strings. Do NOT use this flag on stores used by TerminusDB though, as this will render the destination store unusable.
 
 ## What the tool does
 This tool performs the following steps.
@@ -68,7 +68,7 @@ By default, the tool will not modify the original store directory, but only buil
 ### Cleanup temporary files after a successful run
 By default, the tool will not clean up temporary files used during conversion. Using `-k` or `--clean`, the workdir will be automatically removed after a successful run.
 
-Note that this flag will be ignored if an explicit workdir was specified with `w` or `--workdir`. This is done to prevent accidental removal of files that have nothing to do with the conversion, such as when an already existing directory was specified as a workdir.
+Note that this flag will be ignored if an explicit workdir was specified with `-w` or `--workdir`. This is done to prevent accidental removal of files that have nothing to do with the conversion, such as when an already existing directory was specified as a workdir.
 
 ### Verbose output
 Using `-v` or `--verbose`, the tool can be made to print out the steps it goes through while converting a layer. This can be useful to get more accurate status information.
