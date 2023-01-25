@@ -6,10 +6,12 @@ use itertools::*;
 
 use std::collections::{HashMap, HashSet};
 use std::io;
+use std::io::Write;
 
 pub async fn find_reachable_layers(
     layer_store: &directory_10::DirectoryLayerStore,
     label_store: &directory_10::DirectoryLabelStore,
+    verbose: bool,
 ) -> io::Result<HashMap<Option<[u32; 5]>, Vec<[u32; 5]>>> {
     let special_labels: HashSet<&'static str> = HashSet::from([
         "http%3a%2f%2fterminusdb.com%2fschema%2fref",
@@ -19,7 +21,9 @@ pub async fn find_reachable_layers(
         "terminusdb%3a%2f%2f%2fsystem%2fschema",
     ]);
 
-    eprintln!("about to retrieve labels");
+    if verbose {
+        println!("starting label retrieval");
+    }
     let labels = storage_10::LabelStore::labels(label_store).await?;
     let special_layers: Vec<[u32; 5]> = labels
         .iter()
@@ -31,7 +35,9 @@ pub async fn find_reachable_layers(
         .filter(|l| !special_labels.contains(l.name.as_str()))
         .map(|l| l.layer.unwrap())
         .collect();
-    eprintln!("labels retrieved");
+    if verbose {
+        println!("labels retrieved");
+    }
     data_product_layers.sort();
     data_product_layers.dedup();
     let mut layers = data_product_layers.clone();
@@ -64,6 +70,10 @@ pub async fn find_reachable_layers(
 
     let mut final_list = Vec::with_capacity(layers.len());
     while let Some(layer) = layers.pop() {
+        if verbose {
+            print!(".");
+            io::stdout().flush()?;
+        }
         if let Some(parent) =
             storage_10::LayerStore::get_layer_parent_name(layer_store, layer).await?
         {
@@ -75,7 +85,7 @@ pub async fn find_reachable_layers(
             final_list.push((None, layer));
         }
 
-        /*
+        /* We have not forgotten, but we just aren't doing it.
         // we musn't forget about the rollup
         if storage_10::PersistentLayerStore::layer_has_rollup(layer_store, layer).await? {
             let rollup =
@@ -87,8 +97,10 @@ pub async fn find_reachable_layers(
         */
     }
 
+    if verbose {
+        println!("reachable layers retrieved");
+    }
     final_list.sort();
-
     let group_iter = final_list
         .into_iter()
         .group_by(|(parent, _)| parent.clone());
@@ -101,6 +113,10 @@ pub async fn find_reachable_layers(
             (k, children)
         })
         .collect();
+
+    if verbose {
+        println!("reachable layers sorted");
+    }
 
     Ok(final_map)
 }

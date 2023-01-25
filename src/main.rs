@@ -6,14 +6,11 @@ mod convert_triples;
 mod dataconversion;
 mod reachable;
 
-use convert_dict::*;
 use convert_layer::*;
 use convert_store::*;
 
 use clap::*;
 use std::io;
-
-use tokio;
 
 use thiserror::*;
 
@@ -26,15 +23,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// convert an untyped dictionary to a string dictionary
-    ConvertUntypedDictionary {
-        /// The pfc file to convert from
-        from: String,
-        /// The offsets file to convert to
-        to_offsets: String,
-        /// The tfc file to convert to
-        to_data: String,
-    },
     /// convert a layer between a 10 store and an 11 store
     ConvertLayer {
         /// The storage dir from v10
@@ -49,6 +37,9 @@ enum Commands {
         naive: bool,
         /// The layer id to convert
         id: String,
+        /// Verbose reporting
+        #[arg(short = 'v', long = "verbose")]
+        verbose: bool,
     },
     /// convert a store from a 10 store and an 11 store
     ConvertStore {
@@ -65,6 +56,15 @@ enum Commands {
         /// Keep going with other layers if a layer does not convert
         #[arg(short = 'c', long = "continue")]
         keep_going: bool,
+        /// Verbose reporting
+        #[arg(short = 'v', long = "verbose")]
+        verbose: bool,
+        /// Replace original directory with converted directory
+        #[arg(short = 'r', long = "replace")]
+        replace: bool,
+        /// Cleanup work directory after successful run
+        #[arg(short = 'k', long = "clean")]
+        clean: bool,
     },
 }
 
@@ -90,26 +90,22 @@ async fn inner_main() -> Result<(), CliError> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::ConvertUntypedDictionary {
-            from,
-            to_offsets,
-            to_data,
-        } => convert_untyped_dictionary_to_files(&from, &to_offsets, &to_data).await?,
         Commands::ConvertLayer {
             from,
             to,
             workdir,
             naive,
             id,
+            verbose,
         } => {
             convert_layer(
                 &from,
                 &to,
                 workdir
-                    .as_ref()
-                    .map(|w| w.as_str())
+                    .as_deref()
                     .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
                 naive,
+                verbose,
                 &id,
             )
             .await?;
@@ -120,16 +116,24 @@ async fn inner_main() -> Result<(), CliError> {
             workdir,
             naive,
             keep_going,
+            verbose,
+            replace,
+            mut clean,
         } => {
+            if workdir.is_some() && clean {
+                println!("Clean flag was specified, but ignored as we will not remove manually specified work directories");
+                clean = false;
+            };
+            let default_workdir = format!("{to}/.workdir");
             convert_store(
                 &from,
                 &to,
-                workdir
-                    .as_ref()
-                    .map(|w| w.as_str())
-                    .unwrap_or("/tmp/terminusdb_10_to_11_workdir/"),
+                workdir.as_deref().unwrap_or(&default_workdir),
                 naive,
                 keep_going,
+                verbose,
+                replace,
+                clean,
             )
             .await?;
         }

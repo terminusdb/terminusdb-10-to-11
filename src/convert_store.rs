@@ -1,3 +1,4 @@
+use chrono::Local;
 use terminus_store_10::storage::directory as directory_10;
 use terminus_store_10::storage::name_to_string;
 use terminus_store_10::storage::string_to_name;
@@ -34,12 +35,15 @@ pub async fn convert_store(
     work: &str,
     naive: bool,
     keep_going: bool,
+    verbose: bool,
+    replace: bool,
+    clean: bool,
 ) -> Result<(), StoreConversionError> {
     let v10_layer_store = directory_10::DirectoryLayerStore::new(from);
     let v10_label_store = directory_10::DirectoryLabelStore::new(from);
     let v11_layer_store = archive_11::ArchiveLayerStore::new(to);
 
-    let reachable = find_reachable_layers(&v10_layer_store, &v10_label_store).await?;
+    let reachable = find_reachable_layers(&v10_layer_store, &v10_label_store, verbose).await?;
 
     let mut options = OpenOptions::new();
     options.create(true);
@@ -48,12 +52,8 @@ pub async fn convert_store(
     std::fs::create_dir_all(&error_path)?;
     error_path.push("error.log");
     let mut error_log = options.open(error_path).await?;
-    println!("error log opened");
-
     let status_hashmap = get_status_hashmap(work).await?;
-    println!("read status map");
     let mut status_log = status_log(work).await?;
-    println!("opened status log");
 
     let mut visit_queue = Vec::new();
     visit_queue.extend(reachable[&None].clone());
@@ -64,7 +64,9 @@ pub async fn convert_store(
         let status = status_hashmap.get(&layer);
         match status {
             Some(ConversionStatus::Completed) => {
-                println!("skipping: {}", name_to_string(layer));
+                if verbose {
+                    println!("skipping: {}", name_to_string(layer))
+                };
                 // even though we skip this layer, its children still
                 // might need to be converted, so here they are added
                 // to the visit queue.
@@ -77,8 +79,15 @@ pub async fn convert_store(
             None => (),
         }
         write_status(&mut status_log, layer, ConversionStatus::Started).await?;
-        let result =
-            convert_layer_with_stores(&v10_layer_store, &v11_layer_store, work, naive, layer).await;
+        let result = convert_layer_with_stores(
+            &v10_layer_store,
+            &v11_layer_store,
+            work,
+            naive,
+            verbose,
+            layer,
+        )
+        .await;
         if let Ok(()) = result {
             write_status(&mut status_log, layer, ConversionStatus::Completed).await?;
             if let Some(children) = reachable.get(&Some(layer)) {
@@ -98,14 +107,31 @@ pub async fn convert_store(
         }
     }
 
-    if !failures.is_empty() && !keep_going {
-        return Err(StoreConversionError::LayerConversionsFailed(failures));
-    }
     convert_labels(from, to).await?;
-
     write_version_file(to).await?;
-    println!("version file written");
-    Ok(())
+
+    if !failures.is_empty() {
+        Err(StoreConversionError::LayerConversionsFailed(failures))
+    } else {
+        if clean {
+            clean_workdir(work).await?;
+            if verbose {
+                println!("Workdir `{work}` removed");
+            }
+        }
+        if replace {
+            let backup_path = replace_storage_directory(from, to).await?;
+            println!("Version 11 Store now available");
+            println!("Backup storage directory is in `{backup_path}`");
+        } else {
+            println!("Your version 11 Store is converted in `{to}`, you will need to manually move it to the target storage location: `{from}`");
+        }
+        println!("Conversion completed!");
+        if !clean {
+            println!("You can now remove your workdir: `{work}`");
+        }
+        Ok(())
+    }
 }
 
 pub enum ConversionStatus {
@@ -189,7 +215,6 @@ pub async fn status_log(work: &str) -> io::Result<fs::File> {
     std::fs::create_dir_all(&completed_path)?;
     completed_path.push("status.log");
     let completed_log = completed_options.open(completed_path).await?;
-    println!("error log opened");
     Ok(completed_log)
 }
 
@@ -253,4 +278,17 @@ pub async fn write_version_file(to: &str) -> Result<(), io::Error> {
     let mut file = options.open(path).await?;
     file.write_all(b"2").await?;
     file.flush().await
+}
+
+pub async fn replace_storage_directory(from: &str, to: &str) -> Result<String, io::Error> {
+    let date = Local::now().format("%+");
+    let backup = format!("{from}.{date}.backup");
+    fs::rename(from, &backup).await?;
+    fs::rename(to, from).await?;
+    Ok(backup)
+}
+
+pub async fn clean_workdir(work: &str) -> Result<(), io::Error> {
+    fs::remove_dir_all(work).await?;
+    Ok(())
 }
