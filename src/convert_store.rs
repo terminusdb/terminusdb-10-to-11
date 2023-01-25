@@ -1,3 +1,4 @@
+use chrono::Local;
 use terminus_store_10::storage::directory as directory_10;
 use terminus_store_10::storage::name_to_string;
 use terminus_store_10::storage::string_to_name;
@@ -36,6 +37,7 @@ pub async fn convert_store(
     keep_going: bool,
     verbose: bool,
     replace: bool,
+    clean: bool,
 ) -> Result<(), StoreConversionError> {
     let v10_layer_store = directory_10::DirectoryLayerStore::new(from);
     let v10_label_store = directory_10::DirectoryLabelStore::new(from);
@@ -111,11 +113,23 @@ pub async fn convert_store(
     if !failures.is_empty() {
         Err(StoreConversionError::LayerConversionsFailed(failures))
     } else {
-        if replace {
-            replace_storage_directory(from, to).await?;
-            println!("Version 11 Store now available");
+        if clean {
+            clean_workdir(work).await?;
+            if verbose {
+                println!("Workdir `{work}` removed");
+            }
         }
-        println!("You can now remove your workdir: {work}");
+        if replace {
+            let backup_path = replace_storage_directory(from, to).await?;
+            println!("Version 11 Store now available");
+            println!("Backup storage directory is in `{backup_path}`");
+        } else {
+            println!("Your version 11 Store is converted in `{to}`, you will need to manually move it to the target storage location: `{from}`");
+        }
+        println!("Conversion completed!");
+        if !clean {
+            println!("You can now remove your workdir: `{work}`");
+        }
         Ok(())
     }
 }
@@ -201,7 +215,6 @@ pub async fn status_log(work: &str) -> io::Result<fs::File> {
     std::fs::create_dir_all(&completed_path)?;
     completed_path.push("status.log");
     let completed_log = completed_options.open(completed_path).await?;
-    println!("error log opened");
     Ok(completed_log)
 }
 
@@ -267,9 +280,15 @@ pub async fn write_version_file(to: &str) -> Result<(), io::Error> {
     file.flush().await
 }
 
-pub async fn replace_storage_directory(from: &str, to: &str) -> Result<(), io::Error> {
-    let backup = format!("{from}.backup");
-    fs::rename(from, backup).await?;
+pub async fn replace_storage_directory(from: &str, to: &str) -> Result<String, io::Error> {
+    let date = Local::now().format("%+");
+    let backup = format!("{from}.{date}.backup");
+    fs::rename(from, &backup).await?;
     fs::rename(to, from).await?;
+    Ok(backup)
+}
+
+pub async fn clean_workdir(work: &str) -> Result<(), io::Error> {
+    fs::remove_dir_all(work).await?;
     Ok(())
 }

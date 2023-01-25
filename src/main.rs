@@ -62,6 +62,9 @@ enum Commands {
         /// Replace original directory with converted directory
         #[arg(short = 'r', long = "replace")]
         replace: bool,
+        /// Cleanup work directory after successful run
+        #[arg(short = 'k', long = "clean")]
+        clean: bool,
     },
 }
 
@@ -115,7 +118,12 @@ async fn inner_main() -> Result<(), CliError> {
             keep_going,
             verbose,
             replace,
+            mut clean,
         } => {
+            if workdir.is_some() && clean {
+                println!("Clean flag was specified, but ignored as we will not remove manually specified work directories");
+                clean = false;
+            };
             let default_workdir = format!("{to}/.workdir");
             convert_store(
                 &from,
@@ -125,6 +133,7 @@ async fn inner_main() -> Result<(), CliError> {
                 keep_going,
                 verbose,
                 replace,
+                clean,
             )
             .await?;
         }
