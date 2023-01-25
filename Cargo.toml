@@ -1,6 +1,6 @@
 [package]
 name = "terminusdb-10-to-11"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Gavin Mendel-Gleason <gavin@terminusdb.com>", "Matthijs van Otterdijk <matthijs@terminusdb.com>", "Robin de Rooij <robin@terminusdb.com>"]
