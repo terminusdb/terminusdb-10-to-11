@@ -7,7 +7,7 @@ around 25%.
 
 ## Installation
 
-To install this conversion tool, download the binary from the releases
+To install this conversion tool, download the binary from the [release page](https://github.com/terminusdb/terminusdb-10-to-11/releases/tag/v1.0.0). Alternatively, if you have cargo install, you can use `cargo install terminusdb-10-to-11` to build the binary locally and install it into your cargo bin folder.
 at ...
 
 ## Invocation
