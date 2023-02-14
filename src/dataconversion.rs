@@ -583,7 +583,7 @@ const SWIPL_CONTROL_CHAR_V: char = 11 as char;
 fn prolog_string_to_string(s: &str) -> Cow<str> {
     let mut result: Option<String> = None;
     let mut escaping = false;
-    let mut characters = s.char_indices().skip(1);
+    let mut characters = s.char_indices();
     while let Some((ix, c)) = characters.next() {
         if escaping {
             let result = result.as_mut().unwrap();
@@ -617,11 +617,10 @@ fn prolog_string_to_string(s: &str) -> Cow<str> {
     }
 
     match result {
-        Some(mut result) => {
-            assert_eq!(Some('\"'), result.pop());
+        Some(result) => {
             Cow::Owned(result)
         }
-        None => Cow::Borrowed(&s[1..s.len() - 1]),
+        None => Cow::Borrowed(s),
     }
 }
 
