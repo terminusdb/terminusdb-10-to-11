@@ -90,7 +90,14 @@ pub fn value_string_to_slices(s: &str) -> Result<LangOrType> {
         }
         let pos = pos.unwrap();
 
-        Ok(LangOrType::Lang(&s[..pos], &s[pos + 1..]))
+        let mut lang = &s[pos + 1..];
+        if &lang[0..1] == "\'" || &lang[0..1] == "\"" {
+            lang = &lang[1..lang.len()-1];
+        }
+
+        let val = &s[1..pos-1];
+
+        Ok(LangOrType::Lang(val, lang))
     }
 }
 
