@@ -50,6 +50,9 @@ enum Commands {
         /// The workdir to store mappings in
         #[arg(short = 'w', long = "workdir")]
         workdir: Option<String>,
+        /// Path to a file with a list of labels to convert
+        #[arg(long = "labels")]
+        labels: Option<String>,
         /// Convert the store assuming all values are strings
         #[arg(long = "naive")]
         naive: bool,
@@ -114,6 +117,7 @@ async fn inner_main() -> Result<(), CliError> {
             from,
             to,
             workdir,
+            labels,
             naive,
             keep_going,
             verbose,
@@ -129,6 +133,7 @@ async fn inner_main() -> Result<(), CliError> {
                 &from,
                 &to,
                 workdir.as_deref().unwrap_or(&default_workdir),
+                labels.as_deref(),
                 naive,
                 keep_going,
                 verbose,

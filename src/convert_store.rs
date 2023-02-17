@@ -33,6 +33,7 @@ pub async fn convert_store(
     from: &str,
     to: &str,
     work: &str,
+    labels: Option<&str>,
     naive: bool,
     keep_going: bool,
     verbose: bool,
@@ -43,7 +44,8 @@ pub async fn convert_store(
     let v10_label_store = directory_10::DirectoryLabelStore::new(from);
     let v11_layer_store = archive_11::ArchiveLayerStore::new(to);
 
-    let reachable = find_reachable_layers(&v10_layer_store, &v10_label_store, verbose).await?;
+    let reachable =
+        find_reachable_layers(&v10_layer_store, &v10_label_store, labels, verbose).await?;
 
     let mut options = OpenOptions::new();
     options.create(true);
@@ -107,28 +109,32 @@ pub async fn convert_store(
         }
     }
 
-    convert_labels(from, to).await?;
+    convert_labels(from, to, labels).await?;
     write_version_file(to).await?;
 
     if !failures.is_empty() {
         Err(StoreConversionError::LayerConversionsFailed(failures))
     } else {
-        if clean {
-            clean_workdir(work).await?;
-            if verbose {
-                println!("Workdir `{work}` removed");
+        if labels.is_none() {
+            if clean {
+                clean_workdir(work).await?;
+                if verbose {
+                    println!("Workdir `{work}` removed");
+                }
             }
-        }
-        if replace {
-            let backup_path = replace_storage_directory(from, to).await?;
-            println!("Version 11 Store now available");
-            println!("Backup storage directory is in `{backup_path}`");
+            if replace {
+                let backup_path = replace_storage_directory(from, to).await?;
+                println!("Version 11 Store now available");
+                println!("Backup storage directory is in `{backup_path}`");
+            } else {
+                println!("Your version 11 Store is converted in `{to}`, you will need to manually move it to the target storage location: `{from}`");
+            }
+            println!("Conversion completed!");
+            if !clean {
+                println!("You can now remove your workdir: `{work}`");
+            }
         } else {
-            println!("Your version 11 Store is converted in `{to}`, you will need to manually move it to the target storage location: `{from}`");
-        }
-        println!("Conversion completed!");
-        if !clean {
-            println!("You can now remove your workdir: `{work}`");
+            println!("Partial conversion of your store is now complete.");
         }
         Ok(())
     }
@@ -218,22 +224,40 @@ pub async fn status_log(work: &str) -> io::Result<fs::File> {
     Ok(completed_log)
 }
 
-pub async fn convert_labels(from: &str, to: &str) -> io::Result<()> {
+pub async fn convert_labels(from: &str, to: &str, labels: Option<&str>) -> io::Result<()> {
     let v11_store_path = PathBuf::from(to);
-    let mut stream = fs::read_dir(from).await?;
-    while let Some(direntry) = stream.next_entry().await? {
-        if direntry.file_type().await?.is_file() {
-            let os_name = direntry.file_name();
-            let name = os_name.to_str().ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "unexpected non-utf8 directory name",
-                )
-            })?;
-            if name.ends_with(".label") {
-                let mut to_path = v11_store_path.clone();
-                to_path.push(name);
-                fs::copy(direntry.path(), to_path).await?;
+    if let Some(labels) = labels {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.create(false);
+        options.read(true);
+        let v10_store_path = PathBuf::from(from);
+        let file = options.open(labels).await?;
+        let buffered = BufReader::new(file);
+        let mut lines = buffered.lines();
+        while let Some(label_name) = lines.next_line().await? {
+            let mut from_path = v10_store_path.clone();
+            from_path.push(format!("{label_name}.label"));
+            let mut to_path = v11_store_path.clone();
+            to_path.push(format!("{label_name}.label"));
+
+            fs::copy(from_path, to_path).await?;
+        }
+    } else {
+        let mut stream = fs::read_dir(from).await?;
+        while let Some(direntry) = stream.next_entry().await? {
+            if direntry.file_type().await?.is_file() {
+                let os_name = direntry.file_name();
+                let name = os_name.to_str().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "unexpected non-utf8 directory name",
+                    )
+                })?;
+                if name.ends_with(".label") {
+                    let mut to_path = v11_store_path.clone();
+                    to_path.push(name);
+                    fs::copy(direntry.path(), to_path).await?;
+                }
             }
         }
     }

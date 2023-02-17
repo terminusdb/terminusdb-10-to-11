@@ -92,10 +92,10 @@ pub fn value_string_to_slices(s: &str) -> Result<LangOrType> {
 
         let mut lang = &s[pos + 1..];
         if &lang[0..1] == "\'" || &lang[0..1] == "\"" {
-            lang = &lang[1..lang.len()-1];
+            lang = &lang[1..lang.len() - 1];
         }
 
-        let val = &s[1..pos-1];
+        let val = &s[1..pos - 1];
 
         Ok(LangOrType::Lang(val, lang))
     }
@@ -624,9 +624,7 @@ fn prolog_string_to_string(s: &str) -> Cow<str> {
     }
 
     match result {
-        Some(result) => {
-            Cow::Owned(result)
-        }
+        Some(result) => Cow::Owned(result),
         None => Cow::Borrowed(s),
     }
 }

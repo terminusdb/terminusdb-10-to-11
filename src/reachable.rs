@@ -3,6 +3,8 @@ use terminus_store_10::storage as storage_10;
 use terminus_store_10::storage::directory as directory_10;
 
 use itertools::*;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::BufReader;
 
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -11,33 +13,61 @@ use std::io::Write;
 pub async fn find_reachable_layers(
     layer_store: &directory_10::DirectoryLayerStore,
     label_store: &directory_10::DirectoryLabelStore,
+    labels: Option<&str>,
     verbose: bool,
 ) -> io::Result<HashMap<Option<[u32; 5]>, Vec<[u32; 5]>>> {
-    let special_labels: HashSet<&'static str> = HashSet::from([
-        "http%3a%2f%2fterminusdb.com%2fschema%2fref",
-        "http%3a%2f%2fterminusdb.com%2fschema%2frepository",
-        "http%3a%2f%2fterminusdb.com%2fschema%2fwoql",
-        "terminusdb%3a%2f%2f%2fsystem%2fdata",
-        "terminusdb%3a%2f%2f%2fsystem%2fschema",
-    ]);
+    let mut data_product_layers: Vec<[u32; 5]>;
+    let special_layers: Vec<[u32; 5]>;
+    if let Some(labels) = labels {
+        // we got a labels file, so read that out and use that instead of a full file listing
+        let mut options = tokio::fs::OpenOptions::new();
+        options.create(false);
+        options.read(true);
 
-    if verbose {
-        println!("starting label retrieval");
+        let file = options.open(labels).await?;
+        let buffered = BufReader::new(file);
+        let mut lines = buffered.lines();
+        data_product_layers = Vec::new();
+        while let Some(label_name) = lines.next_line().await? {
+            let label = storage_10::LabelStore::get_label(label_store, &label_name).await?;
+            if label.is_none() {
+                panic!("label name provided was not found: {}", label_name);
+            }
+            let label = label.unwrap();
+            if let Some(layer) = label.layer {
+                data_product_layers.push(layer);
+            }
+        }
+
+        special_layers = Vec::with_capacity(0);
+    } else {
+        let special_labels: HashSet<&'static str> = HashSet::from([
+            "http%3a%2f%2fterminusdb.com%2fschema%2fref",
+            "http%3a%2f%2fterminusdb.com%2fschema%2frepository",
+            "http%3a%2f%2fterminusdb.com%2fschema%2fwoql",
+            "terminusdb%3a%2f%2f%2fsystem%2fdata",
+            "terminusdb%3a%2f%2f%2fsystem%2fschema",
+        ]);
+
+        if verbose {
+            println!("starting label retrieval");
+        }
+        let labels = storage_10::LabelStore::labels(label_store).await?;
+        special_layers = labels
+            .iter()
+            .filter(|l| special_labels.contains(l.name.as_str()))
+            .map(|l| *l.layer.as_ref().unwrap())
+            .collect();
+        data_product_layers = labels
+            .into_iter()
+            .filter(|l| !special_labels.contains(l.name.as_str()))
+            .map(|l| l.layer.unwrap())
+            .collect();
+        if verbose {
+            println!("labels retrieved");
+        }
     }
-    let labels = storage_10::LabelStore::labels(label_store).await?;
-    let special_layers: Vec<[u32; 5]> = labels
-        .iter()
-        .filter(|l| special_labels.contains(l.name.as_str()))
-        .map(|l| *l.layer.as_ref().unwrap())
-        .collect();
-    let mut data_product_layers: Vec<[u32; 5]> = labels
-        .into_iter()
-        .filter(|l| !special_labels.contains(l.name.as_str()))
-        .map(|l| l.layer.unwrap())
-        .collect();
-    if verbose {
-        println!("labels retrieved");
-    }
+
     data_product_layers.sort();
     data_product_layers.dedup();
     let mut layers = data_product_layers.clone();
